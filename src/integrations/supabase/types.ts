@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alerts: {
+        Row: {
+          condition: string
+          created_at: string
+          crypto_name: string
+          id: string
+          is_active: boolean
+          price: number
+          symbol: string
+          triggered_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          condition: string
+          created_at?: string
+          crypto_name: string
+          id?: string
+          is_active?: boolean
+          price: number
+          symbol: string
+          triggered_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          condition?: string
+          created_at?: string
+          crypto_name?: string
+          id?: string
+          is_active?: boolean
+          price?: number
+          symbol?: string
+          triggered_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
