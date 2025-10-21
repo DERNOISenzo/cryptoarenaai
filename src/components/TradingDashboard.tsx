@@ -17,6 +17,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import AlertsManager from "@/components/AlertsManager";
+import TradingBotAI from "./TradingBotAI";
 
 interface TradingDashboardProps {
   crypto: string;
@@ -283,6 +284,9 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
             </div>
           </Card>
         </div>
+
+        {/* AI Trading Bot */}
+        <TradingBotAI symbol={crypto} cryptoName={cryptoName} />
 
         {/* Alerts Manager */}
         <AlertsManager 

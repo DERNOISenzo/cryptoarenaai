@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.crypto-news]
 verify_jwt = false
+
+[functions.trading-bot-ai]
+verify_jwt = false

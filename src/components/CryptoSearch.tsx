@@ -31,9 +31,27 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
 
   const quotes = ["USDT", "USDC", "BTC", "ETH", "BNB"];
 
+  const formatVolume = (volume: number) => {
+    if (volume >= 1e9) return `$${(volume / 1e9).toFixed(2)}B`;
+    if (volume >= 1e6) return `$${(volume / 1e6).toFixed(2)}M`;
+    if (volume >= 1e3) return `$${(volume / 1e3).toFixed(2)}K`;
+    return `$${volume.toFixed(2)}`;
+  };
+
+  const getCryptoLogo = (baseAsset: string) => {
+    return `https://cryptologos.cc/logos/thumbs/${baseAsset.toLowerCase()}.png?v=032`;
+  };
+
   useEffect(() => {
     searchCryptos();
-  }, [quoteAsset]);
+    
+    // Refresh data every 10 seconds
+    const interval = setInterval(() => {
+      searchCryptos();
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [quoteAsset, searchQuery]);
 
   const searchCryptos = async () => {
     setLoading(true);
@@ -127,14 +145,24 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
                   onClick={() => onSelect(crypto.symbol, crypto.name)}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-bold">{crypto.name}</h3>
-                        <Badge variant="outline">{crypto.symbol}</Badge>
+                    <div className="flex-1 flex items-center gap-4">
+                      <img 
+                        src={getCryptoLogo(crypto.baseAsset)} 
+                        alt={crypto.name}
+                        className="w-12 h-12 rounded-full"
+                        onError={(e) => {
+                          e.currentTarget.src = "https://via.placeholder.com/48?text=" + crypto.baseAsset;
+                        }}
+                      />
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-xl font-bold">{crypto.name}</h3>
+                          <Badge variant="outline">{crypto.symbol}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {crypto.baseAsset}/{crypto.quoteAsset}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {crypto.baseAsset}/{crypto.quoteAsset}
-                      </p>
                     </div>
                     
                     <div className="text-right">
@@ -152,7 +180,7 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Vol: ${(crypto.volume24h / 1000000).toFixed(1)}M
+                        Vol: {formatVolume(crypto.volume24h)}
                       </p>
                     </div>
                   </div>

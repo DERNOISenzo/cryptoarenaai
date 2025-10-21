@@ -1,13 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Bot, Zap, Shield } from "lucide-react";
 import TradingDashboard from "@/components/TradingDashboard";
 import CryptoSearch from "@/components/CryptoSearch";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 const Index = () => {
   const [started, setStarted] = useState(false);
   const [selectedCrypto, setSelectedCrypto] = useState<string>("");
   const [cryptoName, setCryptoName] = useState<string>("");
+  const [user, setUser] = useState<User | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleStart = () => {
     setStarted(true);
@@ -18,11 +35,27 @@ const Index = () => {
     setCryptoName(name);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
   if (selectedCrypto) {
-    return <TradingDashboard crypto={selectedCrypto} cryptoName={cryptoName} onBack={() => {
-      setSelectedCrypto("");
-      setCryptoName("");
-    }} />;
+    return (
+      <div>
+        {user && (
+          <div className="fixed top-4 right-4 z-50 flex gap-2 items-center">
+            <span className="text-sm text-muted-foreground">{user.email}</span>
+            <Button variant="outline" onClick={handleLogout}>
+              Déconnexion
+            </Button>
+          </div>
+        )}
+        <TradingDashboard crypto={selectedCrypto} cryptoName={cryptoName} onBack={() => {
+          setSelectedCrypto("");
+          setCryptoName("");
+        }} />
+      </div>
+    );
   }
 
   if (started) {
@@ -31,6 +64,21 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      {!user && (
+        <div className="fixed top-4 right-4 z-50">
+          <Button onClick={() => navigate("/auth")}>
+            Se connecter
+          </Button>
+        </div>
+      )}
+      {user && (
+        <div className="fixed top-4 right-4 z-50 flex gap-2 items-center">
+          <span className="text-sm text-muted-foreground">{user.email}</span>
+          <Button variant="outline" onClick={handleLogout}>
+            Déconnexion
+          </Button>
+        </div>
+      )}
       <div className="max-w-4xl w-full space-y-8 animate-slide-up">
         <div className="text-center space-y-4">
           <div className="flex justify-center mb-6">
