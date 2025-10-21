@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.trading-bot-ai]
 verify_jwt = false
+
+[functions.check-alerts]
+verify_jwt = false

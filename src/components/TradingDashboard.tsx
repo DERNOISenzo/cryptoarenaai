@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,9 +17,9 @@ import {
   Twitter
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import AlertsManager from "@/components/AlertsManager";
 import TradingBotAI from "./TradingBotAI";
+import Header from "./Header";
 
 interface TradingDashboardProps {
   crypto: string;
@@ -48,7 +50,21 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [news, setNews] = useState<any[]>([]);
   const [tweets, setTweets] = useState<any[]>([]);
+  const [userId, setUserId] = useState<string>("");
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserId(session.user.id);
+      } else {
+        navigate("/auth");
+      }
+    };
+    loadUser();
+  }, [navigate]);
 
   useEffect(() => {
     loadAnalysis();
@@ -104,6 +120,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
       toast({
         title: "✅ Analyse terminée",
         description: `${crypto} analysé avec des données réelles`,
+        duration: 3000
       });
     } catch (error) {
       console.error('Analysis error:', error);
@@ -111,7 +128,8 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
       toast({
         title: "❌ Erreur",
         description: "Impossible de charger l'analyse",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     }
   };
@@ -137,19 +155,21 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
   const signalColor = isLong ? "success" : isShort ? "danger" : "muted";
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={onBack} className="gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            Retour
-          </Button>
-          <Button onClick={loadAnalysis} className="gap-2 bg-primary">
-            <Sparkles className="w-4 h-4" />
-            Actualiser
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background">
+      {userId && <Header userId={userId} />}
+      <div className="p-4 md:p-8">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <Button variant="outline" onClick={onBack} className="gap-2">
+              <ArrowLeft className="w-4 h-4" />
+              Retour
+            </Button>
+            <Button onClick={loadAnalysis} className="gap-2 bg-primary">
+              <Sparkles className="w-4 h-4" />
+              Actualiser
+            </Button>
+          </div>
 
         {/* Main Signal Card */}
         <Card className="p-8 border-2 border-primary/50 bg-gradient-to-br from-card to-secondary/50 shadow-2xl">
@@ -375,6 +395,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
             </div>
           </div>
         </Card>
+        </div>
       </div>
     </div>
   );

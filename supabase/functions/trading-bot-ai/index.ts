@@ -25,38 +25,69 @@ serve(async (req) => {
     const klinesRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=100`);
     const klines = await klinesRes.json();
 
-    // Prepare context for AI
-    const systemPrompt = `Tu es un bot de trading crypto expert et intelligent qui apprend continuellement du marché. 
-    Tu analyses les données de marché en temps réel et fournis des recommandations basées sur :
-    - L'analyse technique (RSI, MACD, moyennes mobiles, volumes)
-    - Les tendances du marché
-    - Les patterns de prix historiques
-    - La volatilité et les risques
+    // Calculate technical indicators
+    const closes = klines.map((k: any) => parseFloat(k[4]));
+    const highs = klines.map((k: any) => parseFloat(k[2]));
+    const lows = klines.map((k: any) => parseFloat(k[3]));
     
-    Tu dois continuellement améliorer tes stratégies en apprenant des patterns passés.
-    Fournis des recommandations claires et justifiées pour ${action}.`;
+    // Simple RSI calculation
+    const calculateRSI = (prices: number[], period = 14) => {
+      let gains = 0, losses = 0;
+      for (let i = prices.length - period; i < prices.length; i++) {
+        const change = prices[i] - prices[i - 1];
+        if (change > 0) gains += change;
+        else losses -= change;
+      }
+      const avgGain = gains / period;
+      const avgLoss = losses / period;
+      const rs = avgGain / avgLoss;
+      return 100 - (100 / (1 + rs));
+    };
 
-    const userPrompt = `Analyse ces données de marché pour ${symbol}:
+    const rsi = calculateRSI(closes);
+    const currentPrice = parseFloat(marketData.lastPrice);
+    const priceChange24h = parseFloat(marketData.priceChangePercent);
+
+    // Prepare context for AI
+    const systemPrompt = `Tu es un expert en analyse de marché crypto avec apprentissage continu. Analyse les données techniques réelles et fournis des recommandations précises basées sur:
+    - Indicateurs techniques réels (RSI, prix, volumes)
+    - Patterns de marché
+    - Volatilité et momentum
     
-    Prix actuel: ${marketData.lastPrice}
-    Variation 24h: ${marketData.priceChangePercent}%
-    Volume 24h: ${marketData.volume}
-    Plus haut 24h: ${marketData.highPrice}
-    Plus bas 24h: ${marketData.lowPrice}
-    
-    Données historiques récentes (100 dernières heures):
-    ${JSON.stringify(klines.slice(-10))}
-    
-    Action demandée: ${action}
-    
-    Fournis une analyse détaillée et une recommandation avec:
-    1. Signal (ACHETER/VENDRE/ATTENDRE)
-    2. Niveau de confiance (0-100%)
-    3. Points d'entrée recommandés
-    4. Stop loss suggéré
-    5. Take profit suggéré
-    6. Justification de la recommandation
-    7. Risques identifiés`;
+    Réponds de manière structurée avec des paragraphes clairs, sans utiliser d'astérisques (*) pour la mise en forme. Utilise des sauts de ligne pour séparer les sections.`;
+
+    const userPrompt = `Analyse technique pour ${symbol}:
+
+Prix actuel: $${currentPrice}
+Variation 24h: ${priceChange24h}%
+RSI(14): ${rsi.toFixed(2)}
+Volume 24h: $${parseFloat(marketData.volume).toLocaleString()}
+Plus haut 24h: $${marketData.highPrice}
+Plus bas 24h: $${marketData.lowPrice}
+
+Action: ${action}
+
+Fournis une analyse professionnelle avec:
+
+1. SIGNAL: ACHETER, VENDRE, ou ATTENDRE avec niveau de confiance
+
+2. ANALYSE TECHNIQUE:
+- Interprétation du RSI actuel
+- Analyse de la tendance des prix
+- Évaluation du momentum
+
+3. RECOMMANDATIONS:
+- Points d'entrée optimaux
+- Stop loss suggéré
+- Take profit recommandé
+- Gestion de position
+
+4. RISQUES:
+- Principaux risques identifiés
+- Facteurs de volatilité
+- Conditions de marché
+
+Réponds de façon claire et structurée, sans astérisques. Utilise uniquement des données réelles.`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

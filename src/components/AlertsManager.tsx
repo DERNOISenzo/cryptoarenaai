@@ -51,8 +51,7 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
 
   useEffect(() => {
     loadAlerts();
-    
-    // Set up realtime subscription for alerts
+
     const channel = supabase
       .channel('alerts-changes')
       .on(
@@ -60,17 +59,28 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
         {
           event: '*',
           schema: 'public',
-          table: 'alerts',
-          filter: `symbol=eq.${symbol}`
+          table: 'alerts'
         },
-        () => {
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && payload.new.triggered_at && !payload.old.triggered_at) {
+            toast({
+              title: "🚨 Alerte déclenchée !",
+              description: `${payload.new.crypto_name}: Prix ${payload.new.condition === 'above' ? 'au-dessus' : 'en-dessous'} de $${payload.new.price}`,
+              duration: 5000
+            });
+          }
           loadAlerts();
         }
       )
       .subscribe();
 
+    const checkInterval = setInterval(async () => {
+      await supabase.functions.invoke('check-alerts');
+    }, 30000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(checkInterval);
     };
   }, [symbol]);
 
@@ -142,7 +152,8 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
       toast({
         title: "❌ Erreur",
         description: "Impossible de créer l'alerte",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     }
   };
@@ -165,7 +176,8 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
       toast({
         title: "❌ Erreur",
         description: "Impossible de supprimer l'alerte",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     }
   };

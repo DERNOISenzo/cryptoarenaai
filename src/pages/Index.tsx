@@ -5,22 +5,23 @@ import { TrendingUp, Bot, Zap, Shield } from "lucide-react";
 import TradingDashboard from "@/components/TradingDashboard";
 import CryptoSearch from "@/components/CryptoSearch";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { Session } from "@supabase/supabase-js";
+import Header from "@/components/Header";
 
 const Index = () => {
   const [started, setStarted] = useState(false);
   const [selectedCrypto, setSelectedCrypto] = useState<string>("");
   const [cryptoName, setCryptoName] = useState<string>("");
-  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+      setSession(session);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      setSession(session);
     });
 
     return () => subscription.unsubscribe();
@@ -40,42 +41,29 @@ const Index = () => {
   };
 
   if (selectedCrypto) {
+    return <TradingDashboard crypto={selectedCrypto} cryptoName={cryptoName} onBack={() => {
+      setSelectedCrypto("");
+      setCryptoName("");
+    }} />;
+  }
+
+  if (started) {
     return (
-      <div>
-        {user && (
-          <div className="fixed top-4 right-4 z-50 flex gap-2 items-center">
-            <span className="text-sm text-muted-foreground">{user.email}</span>
-            <Button variant="outline" onClick={handleLogout}>
-              Déconnexion
-            </Button>
-          </div>
-        )}
-        <TradingDashboard crypto={selectedCrypto} cryptoName={cryptoName} onBack={() => {
-          setSelectedCrypto("");
-          setCryptoName("");
-        }} />
+      <div className="min-h-screen bg-background">
+        {session && <Header userId={session.user.id} />}
+        <CryptoSearch onSelect={handleSelect} onBack={() => setStarted(false)} />
       </div>
     );
   }
 
-  if (started) {
-    return <CryptoSearch onSelect={handleSelect} onBack={() => setStarted(false)} />;
-  }
-
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      {!user && (
+    <div className="min-h-screen bg-background">
+      {session && <Header userId={session.user.id} />}
+      <div className="flex items-center justify-center p-4 min-h-screen">
+      {!session && (
         <div className="fixed top-4 right-4 z-50">
           <Button onClick={() => navigate("/auth")}>
             Se connecter
-          </Button>
-        </div>
-      )}
-      {user && (
-        <div className="fixed top-4 right-4 z-50 flex gap-2 items-center">
-          <span className="text-sm text-muted-foreground">{user.email}</span>
-          <Button variant="outline" onClick={handleLogout}>
-            Déconnexion
           </Button>
         </div>
       )}
@@ -173,6 +161,7 @@ const Index = () => {
             ⚠️ Le trading comporte des risques. Utilisez toujours une gestion de risque appropriée.
           </p>
         </div>
+      </div>
       </div>
     </div>
   );
