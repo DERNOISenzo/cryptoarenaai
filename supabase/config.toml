@@ -1,1 +1,10 @@
 project_id = "fzkxeouvmkfvbtpzxeka"
+
+[functions.crypto-search]
+verify_jwt = false
+
+[functions.crypto-analysis]
+verify_jwt = false
+
+[functions.crypto-news]
+verify_jwt = false

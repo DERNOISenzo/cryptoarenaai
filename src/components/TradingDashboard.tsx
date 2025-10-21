@@ -10,12 +10,17 @@ import {
   Target,
   AlertTriangle,
   Brain,
-  Sparkles
+  Sparkles,
+  Newspaper,
+  Twitter
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import AlertsManager from "@/components/AlertsManager";
 
 interface TradingDashboardProps {
   crypto: string;
+  cryptoName: string;
   onBack: () => void;
 }
 
@@ -37,9 +42,11 @@ interface Analysis {
   riskReward: number;
 }
 
-const TradingDashboard = ({ crypto, onBack }: TradingDashboardProps) => {
+const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [news, setNews] = useState<any[]>([]);
+  const [tweets, setTweets] = useState<any[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,34 +56,63 @@ const TradingDashboard = ({ crypto, onBack }: TradingDashboardProps) => {
   const loadAnalysis = async () => {
     setLoading(true);
     
-    // Simulation d'une analyse (à remplacer par un vrai appel API)
-    setTimeout(() => {
-      const mockAnalysis: Analysis = {
-        signal: Math.random() > 0.5 ? "LONG" : "SHORT",
-        confidence: 65 + Math.random() * 30,
-        leverage: Math.floor(2 + Math.random() * 8),
-        price: 45000 + Math.random() * 5000,
-        change24h: -5 + Math.random() * 10,
+    try {
+      // Load analysis from edge function
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('crypto-analysis', {
+        body: { symbol: crypto }
+      });
+
+      if (analysisError) throw analysisError;
+
+      // Load news from edge function
+      const baseAsset = crypto.replace('USDT', '').replace('USDC', '').replace('BTC', '').replace('ETH', '');
+      const { data: newsData, error: newsError } = await supabase.functions.invoke('crypto-news', {
+        body: { symbol: crypto, baseAsset }
+      });
+
+      if (newsError) {
+        console.error('News error:', newsError);
+      } else {
+        setNews(newsData?.news || []);
+        setTweets(newsData?.tweets || []);
+      }
+
+      // Transform the data to match our interface
+      const transformedAnalysis: Analysis = {
+        signal: analysisData.analysis.signal,
+        confidence: analysisData.analysis.confidence,
+        leverage: analysisData.analysis.leverage,
+        price: analysisData.analysis.price,
+        change24h: analysisData.analysis.change24h,
         indicators: {
-          rsi: 30 + Math.random() * 40,
-          macd: Math.random() > 0.5 ? "Haussier" : "Baissier",
-          bb: Math.random() > 0.5 ? "Survente" : "Neutre",
-          atr: 500 + Math.random() * 500,
+          rsi: analysisData.analysis.indicators.rsi14,
+          macd: analysisData.analysis.indicators.macdHist > 0 ? "Haussier" : "Baissier",
+          bb: analysisData.analysis.price < analysisData.analysis.indicators.bbLower * 1.01 ? "Survente" : 
+              analysisData.analysis.price > analysisData.analysis.indicators.bbUpper * 0.99 ? "Surachat" : "Neutre",
+          atr: analysisData.analysis.indicators.atr14,
         },
-        recommendation: "Position suggérée basée sur l'analyse multi-indicateurs",
-        takeProfit: 47000 + Math.random() * 3000,
-        stopLoss: 44000 - Math.random() * 2000,
-        riskReward: 1.5 + Math.random() * 1.5,
+        recommendation: analysisData.analysis.recommendation,
+        takeProfit: analysisData.analysis.takeProfit,
+        stopLoss: analysisData.analysis.stopLoss,
+        riskReward: analysisData.analysis.riskReward,
       };
       
-      setAnalysis(mockAnalysis);
+      setAnalysis(transformedAnalysis);
       setLoading(false);
       
       toast({
         title: "✅ Analyse terminée",
-        description: `${crypto} analysé avec succès`,
+        description: `${crypto} analysé avec des données réelles`,
       });
-    }, 2000);
+    } catch (error) {
+      console.error('Analysis error:', error);
+      setLoading(false);
+      toast({
+        title: "❌ Erreur",
+        description: "Impossible de charger l'analyse",
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -247,6 +283,75 @@ const TradingDashboard = ({ crypto, onBack }: TradingDashboardProps) => {
             </div>
           </Card>
         </div>
+
+        {/* Alerts Manager */}
+        <AlertsManager 
+          symbol={crypto} 
+          cryptoName={cryptoName}
+          currentPrice={analysis.price} 
+        />
+
+        {/* News Section */}
+        {news.length > 0 && (
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Newspaper className="w-5 h-5 text-primary" />
+              <h3 className="text-lg font-semibold">Actualités Crypto</h3>
+              <Badge variant="secondary">{news.length}</Badge>
+            </div>
+            <div className="space-y-3">
+              {news.slice(0, 5).map((item, idx) => (
+                <a
+                  key={idx}
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-4 bg-secondary/30 rounded-lg hover:bg-secondary/50 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <Badge 
+                      variant={item.sentiment === 'positive' ? 'default' : item.sentiment === 'negative' ? 'destructive' : 'outline'}
+                      className="mt-1"
+                    >
+                      {item.sentiment === 'positive' ? '🟢' : item.sentiment === 'negative' ? '🔴' : '⚪'}
+                    </Badge>
+                    <div className="flex-1">
+                      <h4 className="font-medium leading-tight mb-1">{item.title}</h4>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{item.source}</span>
+                        <span>•</span>
+                        <span>{new Date(item.published).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Tweets Section */}
+        {tweets.length > 0 && (
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Twitter className="w-5 h-5 text-primary" />
+              <h3 className="text-lg font-semibold">Tweets Récents</h3>
+              <Badge variant="secondary">{tweets.length}</Badge>
+            </div>
+            <div className="space-y-3">
+              {tweets.slice(0, 5).map((tweet, idx) => (
+                <div key={idx} className="p-4 bg-secondary/30 rounded-lg">
+                  <p className="text-sm leading-relaxed mb-2">{tweet.text}</p>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>{new Date(tweet.created).toLocaleDateString('fr-FR')}</span>
+                    <span>❤️ {tweet.likes}</span>
+                    <span>🔄 {tweet.retweets}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Recommendation */}
         <Card className="p-6 bg-card border-l-4 border-l-primary">
