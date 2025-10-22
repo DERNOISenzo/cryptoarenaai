@@ -14,12 +14,19 @@ import {
   Brain,
   Sparkles,
   Newspaper,
-  Twitter
+  Twitter,
+  Info
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AlertsManager from "@/components/AlertsManager";
 import TradingBotAI from "./TradingBotAI";
 import Header from "./Header";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface TradingDashboardProps {
   crypto: string;
@@ -220,9 +227,21 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
               <Card className="p-6 bg-secondary/30 border-border">
                 <div className="space-y-4">
                   <div>
-                    <div className="flex justify-between mb-2">
+                    <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-muted-foreground">Niveau de confiance</span>
-                      <span className="font-semibold">{analysis.confidence.toFixed(1)}%</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{analysis.confidence.toFixed(1)}%</span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Info className="w-3 h-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Pourcentage de concordance entre les multiples indicateurs techniques analysés. Plus de 60% = forte conviction du signal.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                     </div>
                     <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
                       <div 
@@ -236,11 +255,35 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
 
                   <div className="grid grid-cols-2 gap-4 pt-2">
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">Levier suggéré</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs text-muted-foreground">Levier suggéré</p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Info className="w-3 h-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Levier calculé selon la volatilité ATR et la force de la tendance. Volatilité faible + tendance forte = levier plus élevé acceptable.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                       <p className="text-2xl font-bold">{analysis.leverage}x</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">Risk/Reward</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs text-muted-foreground">Risk/Reward</p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Info className="w-3 h-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Ratio gain potentiel / perte potentielle. Un ratio de 1.7 signifie que vous pouvez gagner 1.7x plus que ce que vous risquez avec le Stop Loss.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                       <p className="text-2xl font-bold">1:{analysis.riskReward.toFixed(1)}</p>
                     </div>
                   </div>
@@ -250,13 +293,37 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
               <Card className="p-6 bg-secondary/30 border-border">
                 <div className="flex items-start gap-3">
                   <Target className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Take Profit:</span>
+                  <div className="space-y-2 text-sm flex-1">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Take Profit:</span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Info className="w-3 h-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Prix cible pour prendre vos bénéfices, calculé avec ATR × 2.0 pour les tendances fortes, × 1.5 pour les tendances modérées.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                       <span className="font-semibold text-success">${analysis.takeProfit.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Stop Loss:</span>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Stop Loss:</span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Info className="w-3 h-3 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Prix où couper vos pertes pour limiter le risque. Calculé avec ATR × 1.0 pour un équilibre optimal entre protection et marge de fluctuation.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                       <span className="font-semibold text-danger">${analysis.stopLoss.toFixed(2)}</span>
                     </div>
                   </div>
@@ -269,39 +336,79 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
         {/* Indicators Grid */}
         <div className="grid md:grid-cols-4 gap-4">
           <Card className="p-6 bg-card border-border">
-            <div className="space-y-2">
+            <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">RSI (14)</p>
-              <p className="text-3xl font-bold">{analysis.indicators.rsi.toFixed(1)}</p>
-              <Badge variant={analysis.indicators.rsi < 30 ? "default" : analysis.indicators.rsi > 70 ? "destructive" : "secondary"}>
-                {analysis.indicators.rsi < 30 ? "Survente" : analysis.indicators.rsi > 70 ? "Surachat" : "Neutre"}
-              </Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-4 h-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">Relative Strength Index - Mesure la force d'une tendance. &lt;30 = Survente (opportunité d'achat), &gt;70 = Surachat (risque de correction). Calculé sur 14 périodes.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
+            <p className="text-3xl font-bold">{analysis.indicators.rsi.toFixed(1)}</p>
+            <Badge variant={analysis.indicators.rsi < 30 ? "default" : analysis.indicators.rsi > 70 ? "destructive" : "secondary"}>
+              {analysis.indicators.rsi < 30 ? "Survente" : analysis.indicators.rsi > 70 ? "Surachat" : "Neutre"}
+            </Badge>
           </Card>
 
           <Card className="p-6 bg-card border-border">
-            <div className="space-y-2">
+            <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">MACD</p>
-              <p className="text-2xl font-bold">{analysis.indicators.macd}</p>
-              <Badge variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}>
-                {analysis.indicators.macd}
-              </Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-4 h-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">Moving Average Convergence Divergence - Indique le momentum. Positif = tendance haussière, Négatif = tendance baissière. Croisement de la ligne de signal = changement potentiel de tendance.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
+            <p className="text-2xl font-bold">{analysis.indicators.macd}</p>
+            <Badge variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}>
+              {analysis.indicators.macd}
+            </Badge>
           </Card>
 
           <Card className="p-6 bg-card border-border">
-            <div className="space-y-2">
+            <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">Bollinger Bands</p>
-              <p className="text-2xl font-bold">{analysis.indicators.bb}</p>
-              <Badge variant="secondary">{analysis.indicators.bb}</Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-4 h-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">Bandes de Bollinger - Canaux de volatilité. Prix proche bande basse = survente potentielle, proche bande haute = surachat potentiel. Calculées avec écart-type de 2.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
+            <p className="text-2xl font-bold">{analysis.indicators.bb}</p>
+            <Badge variant="secondary">{analysis.indicators.bb}</Badge>
           </Card>
 
           <Card className="p-6 bg-card border-border">
-            <div className="space-y-2">
+            <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">ATR (14)</p>
-              <p className="text-3xl font-bold">{analysis.indicators.atr.toFixed(0)}</p>
-              <Badge variant="outline">Volatilité</Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-4 h-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">Average True Range - Mesure la volatilité. Plus élevé = marché volatil (utiliser levier faible). Plus bas = marché stable (levier plus élevé acceptable). Calculé sur 14 périodes.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
+            <p className="text-3xl font-bold">{analysis.indicators.atr.toFixed(0)}</p>
+            <Badge variant="outline">Volatilité</Badge>
           </Card>
         </div>
 

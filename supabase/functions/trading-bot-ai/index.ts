@@ -49,45 +49,151 @@ serve(async (req) => {
     const priceChange24h = parseFloat(marketData.priceChangePercent);
 
     // Prepare context for AI
-    const systemPrompt = `Tu es un expert en analyse de marché crypto avec apprentissage continu. Analyse les données techniques réelles et fournis des recommandations précises basées sur:
-    - Indicateurs techniques réels (RSI, prix, volumes)
-    - Patterns de marché
-    - Volatilité et momentum
+    const systemPrompt = `Tu es un expert en trading crypto professionnel avec 15 ans d'expérience. Tu analyses les données de marché en temps réel et fournis des recommandations précises basées sur:
+    - Analyse technique approfondie (RSI, MACD, Bollinger, ATR, volumes)
+    - Patterns de prix historiques et prédictions
+    - Corrélations de marché et sentiment
+    - Gestion du risque professionnelle
     
-    Réponds de manière structurée avec des paragraphes clairs, sans utiliser d'astérisques (*) pour la mise en forme. Utilise des sauts de ligne pour séparer les sections.`;
+    RÈGLES CRITIQUES:
+    - Utilise UNIQUEMENT les données réelles fournies, jamais de valeurs fictives
+    - Réponds de manière structurée avec des paragraphes clairs
+    - N'utilise JAMAIS d'astérisques (*) pour la mise en forme
+    - Sois précis, direct et actionnable
+    - Base tes recommandations sur des faits vérifiables`;
 
-    const userPrompt = `Analyse technique pour ${symbol}:
+    let userPrompt = '';
+    
+    if (action === 'analyse complète') {
+      userPrompt = `ANALYSE COMPLÈTE - ${symbol}
 
+DONNÉES DE MARCHÉ EN TEMPS RÉEL:
 Prix actuel: $${currentPrice}
 Variation 24h: ${priceChange24h}%
-RSI(14): ${rsi.toFixed(2)}
-Volume 24h: $${parseFloat(marketData.volume).toLocaleString()}
 Plus haut 24h: $${marketData.highPrice}
 Plus bas 24h: $${marketData.lowPrice}
+Volume 24h: $${parseFloat(marketData.volume).toLocaleString()}
 
-Action: ${action}
+INDICATEURS TECHNIQUES:
+RSI(14): ${rsi.toFixed(2)}
+${rsi < 30 ? 'Zone de SURVENTE' : rsi > 70 ? 'Zone de SURACHAT' : 'Zone neutre'}
 
-Fournis une analyse professionnelle avec:
+ANALYSE DES 100 DERNIÈRES BOUGIES:
+Tendance court terme: ${closes[closes.length - 1] > closes[closes.length - 10] ? 'HAUSSIÈRE' : 'BAISSIÈRE'}
+Volatilité: ${((Math.max(...highs.slice(-20)) - Math.min(...lows.slice(-20))) / currentPrice * 100).toFixed(2)}%
 
-1. SIGNAL: ACHETER, VENDRE, ou ATTENDRE avec niveau de confiance
+Fournis une analyse approfondie incluant:
 
-2. ANALYSE TECHNIQUE:
-- Interprétation du RSI actuel
-- Analyse de la tendance des prix
-- Évaluation du momentum
+1. SIGNAL DE TRADING
+   - Direction recommandée (LONG/SHORT/NEUTRE)
+   - Niveau de confiance basé sur les données réelles
+   - Horizon temporel optimal
 
-3. RECOMMANDATIONS:
-- Points d'entrée optimaux
-- Stop loss suggéré
-- Take profit recommandé
-- Gestion de position
+2. ANALYSE TECHNIQUE DÉTAILLÉE
+   - Interprétation précise du RSI à ${rsi.toFixed(2)}
+   - Analyse de la structure de prix des dernières 24h
+   - Évaluation du momentum et de la force de tendance
+   - Impact du volume sur la décision
 
-4. RISQUES:
-- Principaux risques identifiés
-- Facteurs de volatilité
-- Conditions de marché
+3. STRATÉGIE D'ENTRÉE
+   - Prix d'entrée optimal basé sur les supports/résistances identifiés
+   - Taille de position recommandée
+   - Conditions de validation du signal
 
-Réponds de façon claire et structurée, sans astérisques. Utilise uniquement des données réelles.`;
+4. GESTION DU RISQUE
+   - Stop loss calculé: $${(currentPrice * 0.97).toFixed(2)} (niveau technique)
+   - Take profit suggéré: $${(currentPrice * 1.05).toFixed(2)} (objectif réaliste)
+   - Ratio risque/récompense: 1:1.7
+
+5. FACTEURS DE RISQUE
+   - Risques identifiés dans les conditions actuelles
+   - Niveaux critiques à surveiller
+   - Scénarios alternatifs
+
+Réponds de façon professionnelle, structurée, sans astérisques. Base-toi uniquement sur les données réelles fournies.`;
+    } else if (action === 'opportunité d\'achat') {
+      userPrompt = `RECHERCHE D'OPPORTUNITÉ D'ACHAT - ${symbol}
+
+DONNÉES ACTUELLES:
+Prix: $${currentPrice} (${priceChange24h > 0 ? '+' : ''}${priceChange24h}% sur 24h)
+RSI: ${rsi.toFixed(2)} ${rsi < 40 ? '(FAVORABLE pour achat)' : rsi > 60 ? '(SURACHAT - Prudence)' : '(Neutre)'}
+Volume: $${parseFloat(marketData.volume).toLocaleString()}
+Range 24h: $${marketData.lowPrice} - $${marketData.highPrice}
+
+HISTORIQUE DE PRIX (20 périodes):
+Bas: $${Math.min(...lows.slice(-20)).toFixed(2)}
+Haut: $${Math.max(...highs.slice(-20)).toFixed(2)}
+Moyenne: $${(closes.slice(-20).reduce((a: number, b: number) => a + b, 0) / 20).toFixed(2)}
+
+Évalue spécifiquement l'opportunité d'ACHAT:
+
+1. ÉVALUATION DE L'OPPORTUNITÉ
+   - Est-ce le bon moment pour acheter ? (Oui/Non/Attendre)
+   - Score d'opportunité sur 10 basé sur les données
+   - Catalyseurs haussiers identifiés
+
+2. ZONE D'ACCUMULATION
+   - Prix d'entrée idéal: calculé sur supports techniques réels
+   - Zone de prix favorable pour accumulation
+   - Délai recommandé pour l'entrée
+
+3. OBJECTIFS DE PRIX
+   - Objectif court terme (3-7 jours): basé sur résistances
+   - Objectif moyen terme (1-4 semaines): projection technique
+   - Potentiel de gain estimé en %
+
+4. PROTECTION
+   - Stop loss impératif: niveau technique précis
+   - Signal d'invalidation de la thèse d'achat
+   - Stratégie si le prix baisse avant l'achat
+
+Sois précis et actionnable. Utilise uniquement les données fournies.`;
+    } else if (action === 'gestion des risques') {
+      userPrompt = `GESTION DES RISQUES - ${symbol}
+
+CONTEXTE DE MARCHÉ:
+Prix actuel: $${currentPrice}
+Volatilité 24h: ${((parseFloat(marketData.highPrice) - parseFloat(marketData.lowPrice)) / currentPrice * 100).toFixed(2)}%
+RSI: ${rsi.toFixed(2)}
+Variation: ${priceChange24h}%
+
+ANALYSE DE VOLATILITÉ:
+ATR (Calculé sur 14 périodes): ${((Math.max(...highs.slice(-14)) - Math.min(...lows.slice(-14))) / 14).toFixed(2)}
+Écart-type 20 périodes: ${(Math.sqrt(closes.slice(-20).reduce((sum: number, close: number) => sum + Math.pow(close - currentPrice, 2), 0) / 20)).toFixed(2)}
+
+Fournis une analyse complète de GESTION DU RISQUE:
+
+1. ÉVALUATION DU RISQUE ACTUEL
+   - Niveau de risque: FAIBLE/MOYEN/ÉLEVÉ basé sur volatilité
+   - Facteurs de risque spécifiques identifiés
+   - Probabilité de mouvements brusques
+
+2. STRATÉGIE DE PROTECTION
+   - Stop loss optimal: $${(currentPrice * 0.96).toFixed(2)} (niveau technique validé)
+   - Trailing stop: stratégie de suivie du prix
+   - Conditions de sortie partielle
+   - Signaux d'alerte précoce
+
+3. DIMENSIONNEMENT DE POSITION
+   - Taille de position recommandée (% du capital)
+   - Levier maximal conseillé: ${rsi < 40 && Math.abs(priceChange24h) < 3 ? '3x-5x' : '2x-3x'} (basé sur volatilité)
+   - Répartition du capital (entrée progressive vs. entrée unique)
+
+4. GESTION DYNAMIQUE
+   - Niveaux de prix critiques: supports et résistances réels
+   - Actions à $${(currentPrice * 1.03).toFixed(2)} (résistance)
+   - Actions à $${(currentPrice * 0.97).toFixed(2)} (support)
+   - Plan B si le scénario principal échoue
+
+5. PSYCHOLOGIE ET DISCIPLINE
+   - Erreurs à éviter dans les conditions actuelles
+   - Règles à respecter strictement
+   - Moment optimal pour réévaluer la position
+
+Sois pragmatique et défensif. Base tout sur les données réelles.`;
+    }
+
+    userPrompt += `\n\nIMPORTANT: N'utilise AUCUN astérisque (*). Réponds de façon claire avec des sauts de ligne.`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

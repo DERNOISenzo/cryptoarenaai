@@ -157,14 +157,9 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 flex items-center gap-4">
-                      <img 
-                        src={getCryptoLogo(crypto.baseAsset)} 
-                        alt={crypto.name}
-                        className="w-12 h-12 rounded-full"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://via.placeholder.com/48?text=" + crypto.baseAsset;
-                        }}
-                      />
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-lg font-bold text-primary">
+                        {crypto.baseAsset.substring(0, 2)}
+                      </div>
                       <div>
                         <div className="flex items-center gap-3">
                           <h3 className="text-xl font-bold">{crypto.name}</h3>
