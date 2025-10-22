@@ -58,15 +58,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {session && <Header userId={session.user.id} />}
+      <Header userId={session?.user.id} />
       <div className="flex items-center justify-center p-4 min-h-screen">
-      {!session && (
-        <div className="fixed top-4 right-4 z-50">
-          <Button onClick={() => navigate("/auth")}>
-            Se connecter
-          </Button>
-        </div>
-      )}
       <div className="max-w-4xl w-full space-y-8 animate-slide-up">
         <div className="text-center space-y-4">
           <div className="flex justify-center mb-6">
@@ -150,10 +143,11 @@ const Index = () => {
 
           <div className="pt-6">
             <Button 
-              onClick={handleStart} 
+              onClick={session ? handleStart : () => navigate("/auth")} 
               className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-success to-primary hover:opacity-90 transition-opacity"
+              disabled={!session}
             >
-              Commencer l'Analyse
+              {session ? "Commencer l'Analyse" : "Connectez-vous pour commencer"}
             </Button>
           </div>
 

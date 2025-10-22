@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { User, LogOut } from "lucide-react";
 
 interface HeaderProps {
-  userId: string;
+  userId?: string;
 }
 
 const Header = ({ userId }: HeaderProps) => {
@@ -20,6 +20,8 @@ const Header = ({ userId }: HeaderProps) => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!userId) return;
+    
     const loadProfile = async () => {
       const { data } = await supabase
         .from("profiles")
@@ -43,28 +45,34 @@ const Header = ({ userId }: HeaderProps) => {
   return (
     <header className="w-full bg-card border-b border-border p-4">
       <div className="max-w-7xl mx-auto flex justify-end">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2">
-              <Avatar className="w-8 h-8">
-                <AvatarFallback>
-                  {username ? username[0].toUpperCase() : "U"}
-                </AvatarFallback>
-              </Avatar>
-              <span>{username || "Utilisateur"}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="gap-2">
-              <User className="w-4 h-4" />
-              Profil
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleLogout} className="gap-2">
-              <LogOut className="w-4 h-4" />
-              Déconnexion
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {userId ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="gap-2">
+                <Avatar className="w-8 h-8">
+                  <AvatarFallback>
+                    {username ? username[0].toUpperCase() : "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <span>{username || "Utilisateur"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => navigate("/profile")} className="gap-2">
+                <User className="w-4 h-4" />
+                Profil
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout} className="gap-2">
+                <LogOut className="w-4 h-4" />
+                Déconnexion
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button onClick={() => navigate("/auth")}>
+            Se connecter
+          </Button>
+        )}
       </div>
     </header>
   );

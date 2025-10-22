@@ -27,6 +27,7 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
   const [quoteAsset, setQuoteAsset] = useState("USDT");
   const [results, setResults] = useState<CryptoResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { toast } = useToast();
 
   const quotes = ["USDT", "USDC", "BTC", "ETH", "BNB"];
@@ -43,18 +44,21 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
   };
 
   useEffect(() => {
-    searchCryptos();
+    searchCryptos(true);
     
     // Refresh data every 10 seconds
     const interval = setInterval(() => {
-      searchCryptos();
+      searchCryptos(false);
     }, 10000);
     
     return () => clearInterval(interval);
   }, [quoteAsset, searchQuery]);
 
-  const searchCryptos = async () => {
-    setLoading(true);
+  const searchCryptos = async (showLoading: boolean = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
+    
     try {
       const { data, error } = await supabase.functions.invoke('crypto-search', {
         body: { query: searchQuery, quoteAsset }
@@ -63,20 +67,27 @@ const CryptoSearch = ({ onSelect, onBack }: CryptoSearchProps) => {
       if (error) throw error;
 
       setResults(data.results || []);
+      
+      if (isInitialLoad) {
+        setIsInitialLoad(false);
+      }
     } catch (error) {
       console.error('Search error:', error);
       toast({
         title: "❌ Erreur",
         description: "Impossible de charger les cryptos",
-        variant: "destructive"
+        variant: "destructive",
+        duration: 3000
       });
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
   const handleSearch = () => {
-    searchCryptos();
+    searchCryptos(true);
   };
 
   return (

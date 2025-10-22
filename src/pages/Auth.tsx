@@ -193,7 +193,7 @@ const Auth = () => {
                   required
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
@@ -202,9 +202,9 @@ const Auth = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
-                    className="pr-20"
+                    className="pr-12"
                   />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
                     <Button
                       type="button"
                       variant="ghost"
@@ -214,26 +214,64 @@ const Auth = () => {
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={generateSecurePassword}
-                      className="h-8 w-8 p-0"
-                      title="Générer un mot de passe"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </Button>
                   </div>
                 </div>
+                
                 {password && (
-                  <div className="space-y-1">
-                    <Progress value={passwordStrength} className="h-2" />
-                    <p className="text-xs text-muted-foreground">
-                      Sécurité: {passwordStrength < 40 ? "Faible" : passwordStrength < 70 ? "Moyenne" : "Fort"}
-                    </p>
+                  <div className="space-y-2 p-3 bg-secondary/30 rounded-lg">
+                    <div className="space-y-1">
+                      <Progress 
+                        value={passwordStrength} 
+                        className="h-2"
+                        style={{
+                          background: 'hsl(var(--muted))',
+                        }}
+                      />
+                      <p className="text-xs font-semibold" style={{
+                        color: passwordStrength < 40 ? 'hsl(var(--danger))' : passwordStrength < 70 ? 'hsl(var(--accent))' : 'hsl(var(--success))'
+                      }}>
+                        Sécurité: {passwordStrength < 40 ? "Faible" : passwordStrength < 70 ? "Moyenne" : "Fort"}
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={password.length >= 8 ? "text-success" : "text-muted-foreground"}>
+                          {password.length >= 8 ? "✓" : "○"}
+                        </span>
+                        <span>8 caractères minimum</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={/[A-Z]/.test(password) ? "text-success" : "text-muted-foreground"}>
+                          {/[A-Z]/.test(password) ? "✓" : "○"}
+                        </span>
+                        <span>1 majuscule</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={/[a-z]/.test(password) ? "text-success" : "text-muted-foreground"}>
+                          {/[a-z]/.test(password) ? "✓" : "○"}
+                        </span>
+                        <span>1 minuscule</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={/[^a-zA-Z0-9]/.test(password) ? "text-success" : "text-muted-foreground"}>
+                          {/[^a-zA-Z0-9]/.test(password) ? "✓" : "○"}
+                        </span>
+                        <span>1 caractère spécial</span>
+                      </div>
+                    </div>
                   </div>
                 )}
+                
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={generateSecurePassword}
+                  className="w-full gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Générer un mot de passe sécurisé
+                </Button>
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Création..." : "Créer un compte"}
