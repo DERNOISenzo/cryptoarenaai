@@ -14,3 +14,15 @@ verify_jwt = false
 
 [functions.check-alerts]
 verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false
+
+[functions.send-telegram-alert]
+verify_jwt = false
+
+[functions.market-analysis]
+verify_jwt = false
+
+[functions.risk-calculator]
+verify_jwt = false

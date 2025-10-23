@@ -57,6 +57,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          telegram_chat_id: string | null
           updated_at: string
           user_id: string
           username: string
@@ -64,6 +65,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          telegram_chat_id?: string | null
           updated_at?: string
           user_id: string
           username: string
@@ -71,9 +73,70 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          telegram_chat_id?: string | null
           updated_at?: string
           user_id?: string
           username?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          analysis_data: Json | null
+          closed_at: string | null
+          created_at: string
+          crypto_name: string
+          duration_minutes: number | null
+          entry_price: number
+          exit_price: number | null
+          id: string
+          leverage: number
+          result_amount: number | null
+          result_percent: number | null
+          signal: string
+          status: string
+          stop_loss: number
+          symbol: string
+          take_profit: number
+          user_id: string
+        }
+        Insert: {
+          analysis_data?: Json | null
+          closed_at?: string | null
+          created_at?: string
+          crypto_name: string
+          duration_minutes?: number | null
+          entry_price: number
+          exit_price?: number | null
+          id?: string
+          leverage: number
+          result_amount?: number | null
+          result_percent?: number | null
+          signal: string
+          status?: string
+          stop_loss: number
+          symbol: string
+          take_profit: number
+          user_id: string
+        }
+        Update: {
+          analysis_data?: Json | null
+          closed_at?: string | null
+          created_at?: string
+          crypto_name?: string
+          duration_minutes?: number | null
+          entry_price?: number
+          exit_price?: number | null
+          id?: string
+          leverage?: number
+          result_amount?: number | null
+          result_percent?: number | null
+          signal?: string
+          status?: string
+          stop_loss?: number
+          symbol?: string
+          take_profit?: number
+          user_id?: string
         }
         Relationships: []
       }

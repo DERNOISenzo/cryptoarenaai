@@ -413,7 +413,18 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
         </div>
 
         {/* AI Trading Bot */}
-        <TradingBotAI symbol={crypto} cryptoName={cryptoName} />
+        <TradingBotAI 
+          symbol={crypto} 
+          cryptoName={cryptoName}
+          analysisData={{
+            signal: analysis.signal,
+            price: analysis.price,
+            stopLoss: analysis.stopLoss,
+            takeProfit: analysis.takeProfit,
+            leverage: analysis.leverage
+          }}
+          onAnalyzeNow={loadAnalysis}
+        />
 
         {/* Alerts Manager */}
         <AlertsManager 

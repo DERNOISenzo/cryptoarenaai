@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Trash2, Plus, TrendingUp, TrendingDown } from "lucide-react";
+import { Bell, Trash2, Plus, TrendingUp, TrendingDown, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -43,6 +43,7 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [telegramChatId, setTelegramChatId] = useState<string | null>(null);
   const [newAlert, setNewAlert] = useState({
     condition: 'above' as 'above' | 'below',
     price: currentPrice.toString()
@@ -51,6 +52,7 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
 
   useEffect(() => {
     loadAlerts();
+    loadTelegramStatus();
 
     const channel = supabase
       .channel('alerts-changes')
@@ -83,6 +85,25 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
       clearInterval(checkInterval);
     };
   }, [symbol]);
+
+  const loadTelegramStatus = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('telegram_chat_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (data?.telegram_chat_id) {
+        setTelegramChatId(data.telegram_chat_id);
+      }
+    } catch (error) {
+      console.error('Error loading Telegram status:', error);
+    }
+  };
 
   const loadAlerts = async () => {
     try {
@@ -185,11 +206,17 @@ const AlertsManager = ({ symbol, cryptoName, currentPrice }: AlertsManagerProps)
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Bell className="w-5 h-5 text-primary" />
           <h3 className="text-lg font-semibold">Alertes Prix</h3>
           {alerts.length > 0 && (
             <Badge variant="secondary">{alerts.length}</Badge>
+          )}
+          {telegramChatId && (
+            <Badge variant="default" className="gap-1">
+              <MessageCircle className="w-3 h-3" />
+              Telegram actif
+            </Badge>
           )}
         </div>
 

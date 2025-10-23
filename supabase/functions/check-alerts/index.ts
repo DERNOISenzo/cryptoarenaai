@@ -38,9 +38,9 @@ serve(async (req) => {
 
         let shouldTrigger = false;
 
-        if (alert.condition === "au-dessus" && currentPrice >= alert.price) {
+        if (alert.condition === "above" && currentPrice >= alert.price) {
           shouldTrigger = true;
-        } else if (alert.condition === "en-dessous" && currentPrice <= alert.price) {
+        } else if (alert.condition === "below" && currentPrice <= alert.price) {
           shouldTrigger = true;
         }
 
@@ -53,6 +53,23 @@ serve(async (req) => {
               triggered_at: new Date().toISOString(),
             })
             .eq("id", alert.id);
+
+          // Send Telegram notification
+          try {
+            await fetch(`${supabaseUrl}/functions/v1/send-telegram-alert`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                alertId: alert.id,
+                currentPrice: currentPrice
+              })
+            });
+          } catch (telegramError) {
+            console.error('Failed to send Telegram alert:', telegramError);
+          }
 
           triggeredAlerts.push({
             ...alert,
