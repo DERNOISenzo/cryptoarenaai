@@ -3,3 +3,5 @@ project_id = "fzkxeouvmkfvbtpzxeka"
 # Only telegram-webhook needs to be public (receives calls from Telegram servers)
 [functions.telegram-webhook]
 verify_jwt = false
+
+[functions.learning-engine]

@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,7 +52,7 @@ function extractKeywords(text: string): string[] {
   return keywords;
 }
 
-// Fetch RSS feed and parse
+// Fetch RSS feed
 async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticle[]> {
   try {
     const response = await fetch(url, {
@@ -65,32 +64,27 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
     if (!response.ok) return [];
     
     const xmlText = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlText, 'text/xml');
     
-    if (!doc) return [];
-    
-    const items = doc.querySelectorAll('item');
+    // Simple XML parsing without external libraries
     const articles: NewsArticle[] = [];
+    const itemMatches = xmlText.match(/<item>[\s\S]*?<\/item>/g) || [];
     
-    items.forEach((item, index) => {
-      if (index >= 5) return; // Limit to 5 per source
+    itemMatches.slice(0, 5).forEach(itemXml => {
+      const titleMatch = itemXml.match(/<title>(<!\[CDATA\[)?(.*?)(\]\]>)?<\/title>/);
+      const linkMatch = itemXml.match(/<link>(<!\[CDATA\[)?(.*?)(\]\]>)?<\/link>/);
+      const descMatch = itemXml.match(/<description>(<!\[CDATA\[)?(.*?)(\]\]>)?<\/description>/);
+      const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
       
-      const titleEl = item.querySelector('title');
-      const linkEl = item.querySelector('link');
-      const pubDateEl = item.querySelector('pubDate');
-      const descEl = item.querySelector('description');
-      
-      if (titleEl && linkEl) {
-        const title = titleEl.textContent || '';
-        const description = descEl?.textContent || '';
+      if (titleMatch && linkMatch) {
+        const title = titleMatch[2].trim();
+        const description = descMatch ? descMatch[2].trim() : '';
         const fullText = title + ' ' + description;
         
         articles.push({
-          title,
-          url: linkEl.textContent || '',
+          title: title.replace(/<[^>]+>/g, ''), // Strip HTML tags
+          url: linkMatch[2].trim(),
           source: sourceName,
-          published: pubDateEl?.textContent || new Date().toISOString(),
+          published: pubDateMatch ? pubDateMatch[1] : new Date().toISOString(),
           sentiment: analyzeSentiment(fullText),
           keywords: extractKeywords(fullText)
         });
@@ -104,55 +98,6 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
   }
 }
 
-// Scrape web page for articles
-async function scrapeWebPage(url: string, sourceName: string, selector: string): Promise<NewsArticle[]> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    if (!response.ok) return [];
-    
-    const html = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    
-    if (!doc) return [];
-    
-    const articles: NewsArticle[] = [];
-    const elements = doc.querySelectorAll(selector);
-    
-    elements.forEach((el, index) => {
-      if (index >= 5) return;
-      
-      const titleEl = el.querySelector('h2, h3, .title');
-      const linkEl = el.querySelector('a');
-      
-      if (titleEl && linkEl) {
-        const title = titleEl.textContent || '';
-        const href = linkEl.getAttribute('href') || '';
-        const fullUrl = href.startsWith('http') ? href : new URL(href, url).href;
-        
-        articles.push({
-          title,
-          url: fullUrl,
-          source: sourceName,
-          published: new Date().toISOString(),
-          sentiment: analyzeSentiment(title),
-          keywords: extractKeywords(title)
-        });
-      }
-    });
-    
-    return articles;
-  } catch (error) {
-    console.error(`Error scraping ${sourceName}:`, error);
-    return [];
-  }
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -162,64 +107,22 @@ serve(async (req) => {
     const { symbol, baseAsset } = await req.json();
     console.log('Fetching news for:', symbol, baseAsset);
 
-    // 8 sources d'actualités crypto
+    // 8 sources d'actualités crypto (RSS only for reliability)
     const newsSources = [
-      // RSS Feeds
-      { 
-        type: 'rss',
-        url: 'https://cointelegraph.com/rss',
-        name: 'Cointelegraph'
-      },
-      {
-        type: 'rss', 
-        url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',
-        name: 'CoinDesk'
-      },
-      {
-        type: 'rss',
-        url: 'https://cryptoast.fr/feed/',
-        name: 'Cryptoast'
-      },
-      {
-        type: 'rss',
-        url: 'https://journalducoin.com/feed/',
-        name: 'Journal du Coin'
-      },
-      // Web Scraping fallbacks
-      {
-        type: 'web',
-        url: 'https://coinmarketcap.com/headlines/news/',
-        name: 'CoinMarketCap',
-        selector: '.sc-aef7b723-0'
-      },
-      {
-        type: 'web',
-        url: 'https://www.binance.com/en/news/top',
-        name: 'Binance News',
-        selector: '.css-1ej4hfo'
-      },
-      {
-        type: 'web',
-        url: 'https://www.investing.com/news/cryptocurrency-news',
-        name: 'Investing.com',
-        selector: '.article-list article'
-      },
-      {
-        type: 'web',
-        url: 'https://www.tradingview.com/news/',
-        name: 'TradingView',
-        selector: '.news-item'
-      }
+      { url: 'https://cointelegraph.com/rss', name: 'Cointelegraph' },
+      { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', name: 'CoinDesk' },
+      { url: 'https://cryptoast.fr/feed/', name: 'Cryptoast' },
+      { url: 'https://journalducoin.com/feed/', name: 'Journal du Coin' },
+      { url: 'https://cryptonews.com/news/feed/', name: 'CryptoNews' },
+      { url: 'https://bitcoinmagazine.com/feed', name: 'Bitcoin Magazine' },
+      { url: 'https://decrypt.co/feed', name: 'Decrypt' },
+      { url: 'https://www.theblockcrypto.com/rss.xml', name: 'The Block' }
     ];
 
     // Fetch from all sources in parallel
-    const newsPromises = newsSources.map(source => {
-      if (source.type === 'rss') {
-        return fetchRSSFeed(source.url, source.name);
-      } else {
-        return scrapeWebPage(source.url, source.name, source.selector || 'article');
-      }
-    });
+    const newsPromises = newsSources.map(source => 
+      fetchRSSFeed(source.url, source.name)
+    );
 
     const allNewsArrays = await Promise.all(newsPromises);
     const allNews = allNewsArrays.flat();
