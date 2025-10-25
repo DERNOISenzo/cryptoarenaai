@@ -22,25 +22,45 @@ serve(async (req) => {
     const update = await req.json();
     console.log('Telegram update:', update);
 
-    if (!update.message) {
+    // Basic validation
+    if (!update.message || !update.message.chat || !update.message.text) {
       return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
     }
 
     const chatId = update.message.chat.id;
-    const text = update.message.text;
+    const text = update.message.text.trim();
 
-    // Command /start - Link Telegram account
-    if (text === '/start') {
-      const { data: profile } = await supabase
+    // Command /start <userId> - Link Telegram account
+    if (text.startsWith('/start')) {
+      const parts = text.split(' ');
+      const userId = parts[1]; // User ID passed from the app
+      // Check if already linked
+      const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id, username')
         .eq('telegram_chat_id', chatId.toString())
         .single();
 
-      if (profile) {
+      if (existingProfile) {
         await sendTelegramMessage(chatId, `✅ Votre compte est déjà lié!\n\nUtilisez /alert pour voir vos alertes actives.`, TELEGRAM_BOT_TOKEN);
+        return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+      }
+
+      // If userId provided, link the account
+      if (userId) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ telegram_chat_id: chatId.toString() })
+          .eq('user_id', userId);
+
+        if (updateError) {
+          console.error('Error linking Telegram:', updateError);
+          await sendTelegramMessage(chatId, `❌ Erreur lors de la liaison du compte. Veuillez réessayer depuis votre profil.`, TELEGRAM_BOT_TOKEN);
+        } else {
+          await sendTelegramMessage(chatId, `✅ Compte lié avec succès!\n\nVous recevrez désormais vos alertes de prix ici.\n\nCommandes disponibles:\n/alert - Voir vos alertes actives\n/help - Aide`, TELEGRAM_BOT_TOKEN);
+        }
       } else {
-        await sendTelegramMessage(chatId, `👋 Bienvenue sur CryptoArena IA!\n\nPour lier votre compte:\n1. Connectez-vous sur https://cryptoarena.lovable.app\n2. Allez dans votre profil\n3. Entrez ce code: ${chatId}\n\nEnsuite, vous recevrez les alertes ici!`, TELEGRAM_BOT_TOKEN);
+        await sendTelegramMessage(chatId, `👋 Bienvenue sur CryptoArena IA!\n\nPour lier votre compte:\n1. Connectez-vous sur l'application\n2. Allez dans votre profil\n3. Cliquez sur "Connecter Telegram"\n\nEnsuite, vous recevrez vos alertes ici!`, TELEGRAM_BOT_TOKEN);
       }
     }
 

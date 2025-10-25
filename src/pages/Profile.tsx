@@ -15,6 +15,7 @@ const Profile = () => {
   const [email, setEmail] = useState("");
   const [createdAt, setCreatedAt] = useState("");
   const [userId, setUserId] = useState("");
+  const [telegramChatId, setTelegramChatId] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -41,12 +42,13 @@ const Profile = () => {
 
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("username")
+        .select("username, telegram_chat_id")
         .eq("user_id", session.user.id)
         .single();
 
       if (profileData) {
         setUsername(profileData.username);
+        setTelegramChatId(profileData.telegram_chat_id || "");
       }
     } catch (error) {
       console.error("Error loading profile:", error);
@@ -93,6 +95,18 @@ const Profile = () => {
         duration: 3000
       });
     }
+  };
+
+  const handleConnectTelegram = () => {
+    const botUsername = "CryptoArenaIAbot";
+    const telegramUrl = `https://t.me/${botUsername}?start=${userId}`;
+    window.open(telegramUrl, '_blank');
+    
+    toast({
+      title: "🤖 Connexion Telegram",
+      description: "Envoyez /start au bot pour lier votre compte",
+      duration: 5000
+    });
   };
 
   if (loading) {
@@ -171,6 +185,60 @@ const Profile = () => {
                   />
                 </div>
               </div>
+            </div>
+          </Card>
+
+          <Card className="p-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🤖</span>
+                <h2 className="text-2xl font-bold">Notifications Telegram</h2>
+              </div>
+              
+              <p className="text-muted-foreground">
+                Recevez vos alertes de prix directement sur Telegram en temps réel
+              </p>
+
+              {telegramChatId ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 p-4 bg-success/10 rounded-lg border border-success/20">
+                    <span className="text-2xl">✅</span>
+                    <div>
+                      <p className="font-semibold text-success">Telegram connecté</p>
+                      <p className="text-sm text-muted-foreground">
+                        Vous recevrez les notifications sur Telegram
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={handleConnectTelegram}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Reconnecter Telegram
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-4 bg-warning/10 rounded-lg border border-warning/20">
+                    <p className="text-sm text-muted-foreground">
+                      Pour activer les notifications Telegram :
+                    </p>
+                    <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
+                      <li>Cliquez sur "Connecter Telegram"</li>
+                      <li>Envoyez /start au bot</li>
+                      <li>Vos alertes seront automatiquement envoyées</li>
+                    </ol>
+                  </div>
+                  <Button 
+                    onClick={handleConnectTelegram}
+                    className="w-full gap-2"
+                  >
+                    <span className="text-lg">📱</span>
+                    Connecter Telegram
+                  </Button>
+                </div>
+              )}
             </div>
           </Card>
         </div>
