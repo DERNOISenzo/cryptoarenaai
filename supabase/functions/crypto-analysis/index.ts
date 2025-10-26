@@ -370,20 +370,27 @@ serve(async (req) => {
       signal = 'SHORT';
     }
 
-    // Dynamic TP/SL based on volatility, trend strength, and personalized multipliers
-    const atrMultiplierTP = adx > 25 ? userParams.atr_multiplier_tp * 1.2 : userParams.atr_multiplier_tp;
+    // Multi-level TP/SL strategy based on ATR and trend strength
     const atrMultiplierSL = userParams.atr_multiplier_sl;
+    const baseTPMultiplier = adx > 25 ? userParams.atr_multiplier_tp * 1.2 : userParams.atr_multiplier_tp;
     
-    let takeProfit = 0;
+    let takeProfit1 = 0, takeProfit2 = 0, takeProfit3 = 0;
     let stopLoss = 0;
     
     if (signal === 'LONG') {
-      takeProfit = currentPrice + (atr14 * atrMultiplierTP);
+      takeProfit1 = currentPrice + (atr14 * baseTPMultiplier * 1.0);   // 1R (conservative)
+      takeProfit2 = currentPrice + (atr14 * baseTPMultiplier * 2.0);   // 2R (target)
+      takeProfit3 = currentPrice + (atr14 * baseTPMultiplier * 3.5);   // 3.5R (extended)
       stopLoss = currentPrice - (atr14 * atrMultiplierSL);
     } else if (signal === 'SHORT') {
-      takeProfit = currentPrice - (atr14 * atrMultiplierTP);
+      takeProfit1 = currentPrice - (atr14 * baseTPMultiplier * 1.0);
+      takeProfit2 = currentPrice - (atr14 * baseTPMultiplier * 2.0);
+      takeProfit3 = currentPrice - (atr14 * baseTPMultiplier * 3.5);
       stopLoss = currentPrice + (atr14 * atrMultiplierSL);
     }
+    
+    // Use TP2 as main target for risk/reward calculation
+    const takeProfit = takeProfit2;
 
     const riskReward = signal !== 'NEUTRAL' 
       ? Math.abs((takeProfit - currentPrice) / (currentPrice - stopLoss))
@@ -407,9 +414,15 @@ serve(async (req) => {
     // Fetch 24h ticker
     const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
     const ticker = await tickerRes.json();
+    
+    // Detect chart patterns
+    const detectedPatterns = detectPatterns(closes, highs, lows);
 
-    // Calculate time horizon based on ATR and volatility
-    const timeHorizon = calculateTimeHorizon(atr14, currentPrice, takeProfit, stopLoss, volatilityPercent);
+    // Calculate time horizon based on historical data and liquidity
+    const timeHorizon = calculateTimeHorizon(closes, atr14, currentPrice, takeProfit, parseFloat(ticker.quoteVolume));
+    
+    // Calculate position sizing (example with $10,000 account and 1% risk)
+    const examplePositionSize = calculatePositionSize(10000, currentPrice, stopLoss, 1, suggestedLeverage);
 
     const analysis = {
       signal,
@@ -419,14 +432,22 @@ serve(async (req) => {
       change24h: parseFloat(ticker.priceChangePercent),
       volume24h: parseFloat(ticker.quoteVolume),
       indicators,
-      takeProfit,
+      takeProfit1,
+      takeProfit2,
+      takeProfit3,
+      takeProfit, // TP2 as main target
       stopLoss,
       riskReward: Math.round(riskReward * 10) / 10,
       bullishSignals: bullishScore,
       bearishSignals: bearishScore,
       trendAlignment,
       adxStrength: adx,
-      timeHorizon, // Added time horizon
+      patterns: detectedPatterns,
+      timeHorizon,
+      positionSizing: {
+        example: examplePositionSize,
+        note: "Basé sur un capital de $10,000 avec 1% de risque par trade"
+      },
       recommendation: generateRecommendation(
         signal, 
         confidence, 
@@ -440,7 +461,8 @@ serve(async (req) => {
         adx,
         trendAlignment,
         volatilityPercent,
-        timeHorizon
+        timeHorizon,
+        detectedPatterns
       )
     };
 
@@ -458,32 +480,134 @@ serve(async (req) => {
   }
 });
 
-// Calculate estimated time horizon based on volatility percentage
-function calculateTimeHorizon(atr: number, price: number, tp: number, sl: number, volatility: number): {
+// Detect chart patterns
+function detectPatterns(closes: number[], highs: number[], lows: number[]): string[] {
+  const patterns: string[] = [];
+  const len = closes.length;
+  
+  if (len < 20) return patterns;
+  
+  // Double Bottom detection
+  const recentLows = lows.slice(-20);
+  const minLow = Math.min(...recentLows);
+  const lowIndices = recentLows.map((l, i) => l === minLow ? i : -1).filter(i => i !== -1);
+  if (lowIndices.length >= 2 && Math.abs(lowIndices[0] - lowIndices[lowIndices.length - 1]) > 5) {
+    patterns.push('Double Bottom');
+  }
+  
+  // Double Top detection
+  const recentHighs = highs.slice(-20);
+  const maxHigh = Math.max(...recentHighs);
+  const highIndices = recentHighs.map((h, i) => h === maxHigh ? i : -1).filter(i => i !== -1);
+  if (highIndices.length >= 2 && Math.abs(highIndices[0] - highIndices[highIndices.length - 1]) > 5) {
+    patterns.push('Double Top');
+  }
+  
+  // Ascending Triangle (higher lows, flat resistance)
+  const last10Lows = lows.slice(-10);
+  const last10Highs = highs.slice(-10);
+  const lowsIncreasing = last10Lows.every((l, i) => i === 0 || l >= last10Lows[i - 1] - (last10Lows[0] * 0.01));
+  const highsFlat = Math.max(...last10Highs) - Math.min(...last10Highs) < (closes[len - 1] * 0.03);
+  if (lowsIncreasing && highsFlat) {
+    patterns.push('Triangle Ascendant');
+  }
+  
+  // Head and Shoulders
+  if (len >= 30) {
+    const mid = len - 15;
+    const leftShoulder = highs[mid - 10];
+    const head = highs[mid];
+    const rightShoulder = highs[mid + 10];
+    if (head > leftShoulder && head > rightShoulder && Math.abs(leftShoulder - rightShoulder) < (head * 0.05)) {
+      patterns.push('Tête-Épaules');
+    }
+  }
+  
+  return patterns;
+}
+
+// Calculate position size based on risk percentage
+function calculatePositionSize(
+  accountBalance: number,
+  entryPrice: number,
+  stopLoss: number,
+  riskPercent: number,
+  leverage: number
+): {
+  positionSize: number;
+  dollarRisk: number;
+  quantity: number;
+} {
+  const dollarRisk = accountBalance * (riskPercent / 100);
+  const stopDistance = Math.abs(entryPrice - stopLoss);
+  const stopPercent = (stopDistance / entryPrice) * 100;
+  
+  // Position size in dollars considering leverage
+  const positionSize = (dollarRisk / stopPercent) * 100 * leverage;
+  const quantity = positionSize / entryPrice;
+  
+  return {
+    positionSize: Math.round(positionSize * 100) / 100,
+    dollarRisk: Math.round(dollarRisk * 100) / 100,
+    quantity: Math.round(quantity * 100000) / 100000
+  };
+}
+
+// Calculate estimated time horizon based on historical volatility and liquidity
+function calculateTimeHorizon(
+  closes: number[], 
+  atr: number, 
+  price: number, 
+  tp: number, 
+  volume24h: number
+): {
   estimate: string;
   type: 'scalp' | 'intraday' | 'swing' | 'position';
   hours: number;
+  confidence: 'low' | 'medium' | 'high';
 } {
   const targetDistance = Math.abs(tp - price);
   const distancePercent = (targetDistance / price) * 100;
   
-  // Use volatility percentage for more realistic estimates
-  const avgHourlyVolatility = Math.abs(volatility) / 24;
+  // Calculate historical move speed from last 30 closes
+  const recentCloses = closes.slice(-30);
+  let totalMovePercent = 0;
+  let moveCount = 0;
   
-  if (avgHourlyVolatility === 0 || distancePercent === 0) {
-    return { estimate: 'Indéterminé', type: 'swing', hours: 0 };
+  for (let i = 1; i < recentCloses.length; i++) {
+    const movePercent = Math.abs((recentCloses[i] - recentCloses[i - 1]) / recentCloses[i - 1]) * 100;
+    totalMovePercent += movePercent;
+    moveCount++;
   }
   
-  // Estimate hours based on percentage moves
-  let estimatedHours = distancePercent / avgHourlyVolatility;
+  const avgHourlyMove = moveCount > 0 ? totalMovePercent / moveCount : 0;
   
-  // Cap maximum at 6 weeks (1008 hours)
-  estimatedHours = Math.min(estimatedHours, 1008);
+  if (avgHourlyMove === 0 || distancePercent === 0) {
+    return { estimate: 'Indéterminé', type: 'swing', hours: 0, confidence: 'low' };
+  }
+  
+  // Estimate based on real historical speed
+  let estimatedHours = distancePercent / avgHourlyMove;
+  
+  // Liquidity adjustment - high volume = faster moves
+  const liquidityMultiplier = volume24h > 1000000000 ? 0.8 : volume24h > 100000000 ? 1.0 : 1.3;
+  estimatedHours *= liquidityMultiplier;
+  
+  // Cap at realistic maximum (4 weeks)
+  estimatedHours = Math.min(estimatedHours, 672);
+  
+  // Confidence based on data quality and volatility consistency
+  const recentVolatility = recentCloses.slice(-10).map((c, i, arr) => 
+    i === 0 ? 0 : Math.abs((c - arr[i - 1]) / arr[i - 1])
+  );
+  const volatilityStdDev = calculateStdDev(recentVolatility);
+  const confidence: 'low' | 'medium' | 'high' = 
+    volatilityStdDev < 0.01 ? 'high' : volatilityStdDev < 0.02 ? 'medium' : 'low';
   
   let type: 'scalp' | 'intraday' | 'swing' | 'position';
   let estimate: string;
   
-  if (estimatedHours < 4) {
+  if (estimatedHours < 6) {
     type = 'scalp';
     estimate = `${Math.round(estimatedHours)} heures`;
   } else if (estimatedHours < 24) {
@@ -495,11 +619,18 @@ function calculateTimeHorizon(atr: number, price: number, tp: number, sl: number
     estimate = `${days} jour${days > 1 ? 's' : ''}`;
   } else {
     type = 'position';
-    const weeks = Math.min(6, Math.round(estimatedHours / 168));
+    const weeks = Math.round(estimatedHours / 168);
     estimate = `${weeks} semaine${weeks > 1 ? 's' : ''}`;
   }
   
-  return { estimate, type, hours: estimatedHours };
+  return { estimate, type, hours: estimatedHours, confidence };
+}
+
+function calculateStdDev(values: number[]): number {
+  if (values.length === 0) return 0;
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const squareDiffs = values.map(v => Math.pow(v - avg, 2));
+  return Math.sqrt(squareDiffs.reduce((a, b) => a + b, 0) / values.length);
 }
 
 function generateRecommendation(
@@ -515,10 +646,16 @@ function generateRecommendation(
   adx: number,
   trendAlignment: boolean,
   volatility: number,
-  timeHorizon: any
+  timeHorizon: any,
+  patterns: string[]
 ): string {
   let rec = `Signal ${signal} avec ${confidence.toFixed(1)}% de confiance.\n`;
-  rec += `HORIZON TEMPOREL: ${timeHorizon.estimate} (${timeHorizon.type.toUpperCase()})\n\n`;
+  rec += `HORIZON TEMPOREL: ${timeHorizon.estimate} (${timeHorizon.type.toUpperCase()}) - Confiance: ${timeHorizon.confidence}\n`;
+  
+  if (patterns.length > 0) {
+    rec += `PATTERNS DÉTECTÉS: ${patterns.join(', ')}\n`;
+  }
+  rec += `\n`;
   
   if (signal === 'LONG') {
     rec += `ANALYSE TECHNIQUE:\n`;

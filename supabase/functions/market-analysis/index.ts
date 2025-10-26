@@ -24,6 +24,110 @@ interface Opportunity {
   timeframe: string;
 }
 
+// Analyze sentiment from news articles
+function analyzeSentiment(title: string, description: string): {
+  score: number; // -1 to 1
+  category: 'très positif' | 'positif' | 'neutre' | 'négatif' | 'très négatif';
+  keywords: string[];
+} {
+  const text = `${title} ${description}`.toLowerCase();
+  
+  // Positive keywords with weighted scores
+  const positiveKeywords = {
+    'partenariat': 3, 'partnership': 3, 'collaboration': 3,
+    'listing': 3, 'binance': 2, 'coinbase': 2,
+    'adoption': 2, 'institutional': 2, 'investment': 2,
+    'upgrade': 2, 'update': 2, 'launch': 2, 'mainnet': 3,
+    'growth': 1, 'bullish': 2, 'surge': 2, 'rally': 2,
+    'innovation': 1, 'breakthrough': 2, 'success': 1
+  };
+  
+  // Negative keywords with weighted scores
+  const negativeKeywords = {
+    'hack': -3, 'exploit': -3, 'scam': -3, 'fraud': -3,
+    'sec': -2, 'lawsuit': -2, 'regulation': -1, 'ban': -3,
+    'crash': -2, 'dump': -2, 'bearish': -2, 'decline': -1,
+    'risk': -1, 'warning': -1, 'concern': -1, 'investigation': -2,
+    'suspension': -2, 'delisting': -3, 'attack': -2
+  };
+  
+  let score = 0;
+  const foundKeywords: string[] = [];
+  
+  // Check positive keywords
+  Object.entries(positiveKeywords).forEach(([keyword, weight]) => {
+    if (text.includes(keyword)) {
+      score += weight;
+      foundKeywords.push(`+${keyword}`);
+    }
+  });
+  
+  // Check negative keywords
+  Object.entries(negativeKeywords).forEach(([keyword, weight]) => {
+    if (text.includes(keyword)) {
+      score += weight;
+      foundKeywords.push(`-${keyword}`);
+    }
+  });
+  
+  // Normalize score to -1 to 1 range
+  const normalizedScore = Math.max(-1, Math.min(1, score / 5));
+  
+  // Categorize
+  let category: 'très positif' | 'positif' | 'neutre' | 'négatif' | 'très négatif';
+  if (normalizedScore > 0.5) category = 'très positif';
+  else if (normalizedScore > 0.2) category = 'positif';
+  else if (normalizedScore > -0.2) category = 'neutre';
+  else if (normalizedScore > -0.5) category = 'négatif';
+  else category = 'très négatif';
+  
+  return { score: normalizedScore, category, keywords: foundKeywords };
+}
+
+// Build sentiment map from news
+async function buildSentimentMap(symbols: string[]): Promise<Map<string, number>> {
+  const sentimentMap = new Map<string, number>();
+  
+  try {
+    // Fetch news for analysis (using the crypto-news endpoint)
+    const newsPromises = symbols.slice(0, 20).map(async symbol => {
+      try {
+        const response = await fetch(`https://fzkxeouvmkfvbtpzxeka.supabase.co/functions/v1/crypto-news`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol })
+        });
+        
+        if (!response.ok) return { symbol, sentiment: 0 };
+        
+        const data = await response.json();
+        const articles = data.articles || [];
+        
+        let totalSentiment = 0;
+        articles.slice(0, 5).forEach((article: any) => {
+          const analysis = analyzeSentiment(article.title || '', article.description || '');
+          totalSentiment += analysis.score;
+        });
+        
+        const avgSentiment = articles.length > 0 ? totalSentiment / Math.min(5, articles.length) : 0;
+        return { symbol, sentiment: avgSentiment };
+      } catch {
+        return { symbol, sentiment: 0 };
+      }
+    });
+    
+    const results = await Promise.all(newsPromises);
+    results.forEach(({ symbol, sentiment }) => {
+      const baseName = symbol.replace('USDT', '');
+      sentimentMap.set(baseName, sentiment);
+    });
+  } catch (error) {
+    console.error('Error building sentiment map:', error);
+  }
+  
+  return sentimentMap;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -57,28 +161,6 @@ serve(async (req) => {
     
     console.log(`Market analysis with limit=${limit}, threshold=${effectiveThreshold}${userParams ? ' (personalized)' : ''}`);
 
-    // Fetch CoinGecko data for fundamental analysis
-    let coinGeckoData: any = {};
-    try {
-      const cgResponse = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&sparkline=false');
-      const cgCoins = await cgResponse.json();
-      coinGeckoData = cgCoins.reduce((acc: any, coin: any) => {
-        const symbol = coin.symbol.toUpperCase();
-        acc[symbol] = {
-          marketCap: coin.market_cap,
-          fullyDilutedValuation: coin.fully_diluted_valuation,
-          circulatingSupply: coin.circulating_supply,
-          totalSupply: coin.total_supply,
-          marketCapRank: coin.market_cap_rank,
-          priceChange7d: coin.price_change_percentage_7d_in_currency || 0
-        };
-        return acc;
-      }, {});
-      console.log(`Fetched ${Object.keys(coinGeckoData).length} coins from CoinGecko`);
-    } catch (error) {
-      console.error('CoinGecko API error:', error);
-    }
-
     // Check market-wide volatility for safety mode
     const btcData = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r => r.json());
     const btcVolatility = Math.abs(parseFloat(btcData.priceChangePercent));
@@ -100,6 +182,33 @@ serve(async (req) => {
       !t.symbol.includes('BULL') &&
       !t.symbol.includes('BEAR')
     ).sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+    
+    // Build sentiment map from news
+    console.log('📰 Building news sentiment map...');
+    const sentimentMap = await buildSentimentMap(usdtPairs.slice(0, 50).map((t: any) => t.symbol));
+    console.log(`✅ Sentiment analysis complete for ${sentimentMap.size} assets`);
+
+    // Fetch CoinGecko data for fundamental analysis
+    let coinGeckoData: any = {};
+    try {
+      const cgResponse = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&sparkline=false');
+      const cgCoins = await cgResponse.json();
+      coinGeckoData = cgCoins.reduce((acc: any, coin: any) => {
+        const symbol = coin.symbol.toUpperCase();
+        acc[symbol] = {
+          marketCap: coin.market_cap,
+          fullyDilutedValuation: coin.fully_diluted_valuation,
+          circulatingSupply: coin.circulating_supply,
+          totalSupply: coin.total_supply,
+          marketCapRank: coin.market_cap_rank,
+          priceChange7d: coin.price_change_percentage_7d_in_currency || 0
+        };
+        return acc;
+      }, {});
+      console.log(`✅ Fetched ${Object.keys(coinGeckoData).length} coins from CoinGecko`);
+    } catch (error) {
+      console.error('CoinGecko API error:', error);
+    }
 
     const opportunities: Opportunity[] = [];
 
@@ -217,8 +326,16 @@ serve(async (req) => {
         if (volumeCV < 0.5) fundamentalScore += 5; // Consistent volume
         else if (volumeCV < 1) fundamentalScore += 2;
 
-        // SENTIMENT SCORING (30 points max) - Will be enhanced with news later
+        // SENTIMENT SCORING (30 points max) - Enhanced with NEWS analysis
         let sentimentScore = 0;
+        
+        // News sentiment integration (15 points)
+        const newsSentiment = sentimentMap.get(baseName) || 0;
+        if (newsSentiment > 0.5) sentimentScore += 15;  // Very positive news
+        else if (newsSentiment > 0.2) sentimentScore += 10; // Positive news
+        else if (newsSentiment > -0.2) sentimentScore += 5; // Neutral
+        else if (newsSentiment > -0.5) sentimentScore -= 5; // Negative news
+        else sentimentScore -= 15; // Very negative news
         
         // Safety mode penalty
         if (safetyMode) {
