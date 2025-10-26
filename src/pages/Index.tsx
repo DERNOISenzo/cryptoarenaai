@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { TrendingUp, Bot, Zap, Shield } from "lucide-react";
 import TradingDashboard from "@/components/TradingDashboard";
 import CryptoSearch from "@/components/CryptoSearch";
@@ -12,6 +13,7 @@ const Index = () => {
   const [started, setStarted] = useState(false);
   const [selectedCrypto, setSelectedCrypto] = useState<string>("");
   const [cryptoName, setCryptoName] = useState<string>("");
+  const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>('swing');
   const [session, setSession] = useState<Session | null>(null);
   const navigate = useNavigate();
 
@@ -41,17 +43,52 @@ const Index = () => {
   };
 
   if (selectedCrypto) {
-    return <TradingDashboard crypto={selectedCrypto} cryptoName={cryptoName} onBack={() => {
-      setSelectedCrypto("");
-      setCryptoName("");
-    }} />;
+    return <TradingDashboard 
+      crypto={selectedCrypto} 
+      cryptoName={cryptoName} 
+      tradeType={tradeType}
+      onBack={() => {
+        setSelectedCrypto("");
+        setCryptoName("");
+      }} 
+    />;
   }
 
   if (started) {
     return (
       <div className="min-h-screen bg-background">
         {session && <Header userId={session.user.id} />}
-        <CryptoSearch onSelect={handleSelect} onBack={() => setStarted(false)} />
+        <div className="p-4">
+          <div className="max-w-6xl mx-auto mb-4">
+            <Card className="p-4">
+              <label className="text-sm font-medium mb-2 block">Type de Trade:</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={tradeType === 'scalp' ? 'default' : 'outline'}
+                  onClick={() => setTradeType('scalp')}
+                  size="sm"
+                >
+                  🎯 Scalp (Court terme)
+                </Button>
+                <Button
+                  variant={tradeType === 'swing' ? 'default' : 'outline'}
+                  onClick={() => setTradeType('swing')}
+                  size="sm"
+                >
+                  📊 Swing (Moyen terme)
+                </Button>
+                <Button
+                  variant={tradeType === 'long' ? 'default' : 'outline'}
+                  onClick={() => setTradeType('long')}
+                  size="sm"
+                >
+                  💎 Long Terme
+                </Button>
+              </div>
+            </Card>
+          </div>
+          <CryptoSearch onSelect={handleSelect} onBack={() => setStarted(false)} />
+        </div>
       </div>
     );
   }

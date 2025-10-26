@@ -33,6 +33,7 @@ import {
 interface TradingDashboardProps {
   crypto: string;
   cryptoName: string;
+  tradeType?: 'scalp' | 'swing' | 'long';
   onBack: () => void;
 }
 
@@ -50,16 +51,20 @@ interface Analysis {
   };
   recommendation: string;
   takeProfit: number;
+  takeProfit1?: number;
+  takeProfit2?: number;
+  takeProfit3?: number;
   stopLoss: number;
   riskReward: number;
   timeHorizon?: {
     estimate: string;
     type: string;
     hours: number;
+    confidence: number;
   };
 }
 
-const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps) => {
+const TradingDashboard = ({ crypto, cryptoName, tradeType = 'swing', onBack }: TradingDashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [news, setNews] = useState<any[]>([]);
@@ -83,7 +88,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
 
   useEffect(() => {
     loadAnalysis();
-  }, [crypto]);
+  }, [crypto, tradeType]);
 
   const loadAnalysis = async () => {
     setLoading(true);
@@ -91,7 +96,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
     try {
       // Load analysis from edge function
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('crypto-analysis', {
-        body: { symbol: crypto }
+        body: { symbol: crypto, tradeType }
       });
 
       if (analysisError) throw analysisError;
@@ -125,6 +130,9 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
         },
         recommendation: analysisData.analysis.recommendation,
         takeProfit: analysisData.analysis.takeProfit,
+        takeProfit1: analysisData.analysis.takeProfit1,
+        takeProfit2: analysisData.analysis.takeProfit2,
+        takeProfit3: analysisData.analysis.takeProfit3,
         stopLoss: analysisData.analysis.stopLoss,
         riskReward: analysisData.analysis.riskReward,
         timeHorizon: analysisData.analysis.timeHorizon,
@@ -321,24 +329,82 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
               <Card className="p-6 bg-secondary/30 border-border">
                 <div className="flex items-start gap-3">
                   <Target className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="space-y-2 text-sm flex-1">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">Take Profit:</span>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Info className="w-3 h-3 text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Prix cible pour prendre vos bénéfices, calculé avec ATR × 2.0 pour les tendances fortes, × 1.5 pour les tendances modérées.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                  <div className="space-y-3 text-sm flex-1">
+                    <h3 className="font-semibold text-base mb-2">Niveaux de Take Profit</h3>
+                    
+                    {analysis.takeProfit1 && analysis.takeProfit2 && analysis.takeProfit3 ? (
+                      <>
+                        <div className="flex justify-between items-center p-2 bg-success/10 rounded border border-success/20">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">TP1 (Conservateur):</span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Info className="w-3 h-3 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Premier objectif - Prenez 30-50% de vos profits ici pour sécuriser des gains rapides.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <span className="font-bold text-success">${analysis.takeProfit1.toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center p-2 bg-success/10 rounded border border-success/30">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">TP2 (Cible principale):</span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Info className="w-3 h-3 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Objectif principal - Prenez 40-50% de vos profits ici. Calculé avec ATR optimisé.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <span className="font-bold text-success">${analysis.takeProfit2.toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center p-2 bg-success/10 rounded border border-success/40">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">TP3 (Étendu):</span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Info className="w-3 h-3 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Objectif ambitieux - Laissez courir 10-20% de votre position pour maximiser les gains en cas de forte tendance.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <span className="font-bold text-success">${analysis.takeProfit3.toFixed(2)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Take Profit:</span>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Info className="w-3 h-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="max-w-xs">Prix cible pour prendre vos bénéfices, calculé avec ATR × 2.0 pour les tendances fortes, × 1.5 pour les tendances modérées.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <span className="font-semibold text-success">${analysis.takeProfit.toFixed(2)}</span>
                       </div>
-                      <span className="font-semibold text-success">${analysis.takeProfit.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
+                    )}
+                    
+                    <div className="flex justify-between items-center p-2 bg-danger/10 rounded border border-danger/20 mt-2">
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">Stop Loss:</span>
                         <TooltipProvider>
@@ -347,12 +413,12 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
                               <Info className="w-3 h-3 text-muted-foreground" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p className="max-w-xs">Prix où couper vos pertes pour limiter le risque. Calculé avec ATR × 1.0 pour un équilibre optimal entre protection et marge de fluctuation.</p>
+                              <p className="max-w-xs">Prix où couper vos pertes pour limiter le risque. Ajusté selon le type de trade sélectionné.</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </div>
-                      <span className="font-semibold text-danger">${analysis.stopLoss.toFixed(2)}</span>
+                      <span className="font-bold text-danger">${analysis.stopLoss.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

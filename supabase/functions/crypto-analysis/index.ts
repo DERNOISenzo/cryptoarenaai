@@ -303,13 +303,13 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol } = await req.json();
+    const { symbol, tradeType = 'swing' } = await req.json();
     
     if (!symbol) {
       throw new Error('Symbol is required');
     }
 
-    console.log('Analyzing:', symbol);
+    console.log('Analyzing:', symbol, '- Trade type:', tradeType);
 
     // Get user's analysis parameters (if authenticated) from the Authorization header
     const authHeader = req.headers.get('Authorization');
@@ -531,23 +531,45 @@ serve(async (req) => {
       signal = 'SHORT';
     }
 
-    // Multi-level TP/SL strategy based on ATR and trend strength
+    // Multi-level TP/SL strategy based on ATR, trend strength, and trade type
     const atrMultiplierSL = userParams.atr_multiplier_sl;
     const baseTPMultiplier = adx > 25 ? userParams.atr_multiplier_tp * 1.2 : userParams.atr_multiplier_tp;
+    
+    // Adjust TP/SL multipliers based on trade type
+    let tp1Mult, tp2Mult, tp3Mult, slMult;
+    if (tradeType === 'scalp') {
+      // Scalp: tighter targets, quick exits
+      tp1Mult = 0.5;
+      tp2Mult = 1.0;
+      tp3Mult = 1.5;
+      slMult = atrMultiplierSL * 0.7;
+    } else if (tradeType === 'swing') {
+      // Swing: balanced targets
+      tp1Mult = 1.0;
+      tp2Mult = 2.0;
+      tp3Mult = 3.5;
+      slMult = atrMultiplierSL;
+    } else {
+      // Long term: wider targets
+      tp1Mult = 1.5;
+      tp2Mult = 3.0;
+      tp3Mult = 5.0;
+      slMult = atrMultiplierSL * 1.5;
+    }
     
     let takeProfit1 = 0, takeProfit2 = 0, takeProfit3 = 0;
     let stopLoss = 0;
     
     if (signal === 'LONG') {
-      takeProfit1 = currentPrice + (atr14 * baseTPMultiplier * 1.0);   // 1R (conservative)
-      takeProfit2 = currentPrice + (atr14 * baseTPMultiplier * 2.0);   // 2R (target)
-      takeProfit3 = currentPrice + (atr14 * baseTPMultiplier * 3.5);   // 3.5R (extended)
-      stopLoss = currentPrice - (atr14 * atrMultiplierSL);
+      takeProfit1 = currentPrice + (atr14 * baseTPMultiplier * tp1Mult);
+      takeProfit2 = currentPrice + (atr14 * baseTPMultiplier * tp2Mult);
+      takeProfit3 = currentPrice + (atr14 * baseTPMultiplier * tp3Mult);
+      stopLoss = currentPrice - (atr14 * slMult);
     } else if (signal === 'SHORT') {
-      takeProfit1 = currentPrice - (atr14 * baseTPMultiplier * 1.0);
-      takeProfit2 = currentPrice - (atr14 * baseTPMultiplier * 2.0);
-      takeProfit3 = currentPrice - (atr14 * baseTPMultiplier * 3.5);
-      stopLoss = currentPrice + (atr14 * atrMultiplierSL);
+      takeProfit1 = currentPrice - (atr14 * baseTPMultiplier * tp1Mult);
+      takeProfit2 = currentPrice - (atr14 * baseTPMultiplier * tp2Mult);
+      takeProfit3 = currentPrice - (atr14 * baseTPMultiplier * tp3Mult);
+      stopLoss = currentPrice + (atr14 * slMult);
     }
     
     // Use TP2 as main target for risk/reward calculation
@@ -605,6 +627,7 @@ serve(async (req) => {
       adxStrength: adx,
       patterns: detectedPatterns,
       timeHorizon,
+      tradeType,
       positionSizing: {
         example: examplePositionSize,
         note: "Basé sur un capital de $10,000 avec 1% de risque par trade"
