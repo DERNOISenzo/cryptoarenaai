@@ -53,6 +53,51 @@ export type Database = {
         }
         Relationships: []
       }
+      analysis_params: {
+        Row: {
+          atr_multiplier_sl: number
+          atr_multiplier_tp: number
+          confidence_threshold: number
+          created_at: string
+          id: string
+          max_leverage: number
+          min_bullish_score: number
+          preferred_signal: string
+          rsi_overbought_threshold: number
+          rsi_oversold_threshold: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          atr_multiplier_sl?: number
+          atr_multiplier_tp?: number
+          confidence_threshold?: number
+          created_at?: string
+          id?: string
+          max_leverage?: number
+          min_bullish_score?: number
+          preferred_signal?: string
+          rsi_overbought_threshold?: number
+          rsi_oversold_threshold?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          atr_multiplier_sl?: number
+          atr_multiplier_tp?: number
+          confidence_threshold?: number
+          created_at?: string
+          id?: string
+          max_leverage?: number
+          min_bullish_score?: number
+          preferred_signal?: string
+          rsi_overbought_threshold?: number
+          rsi_oversold_threshold?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

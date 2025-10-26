@@ -168,7 +168,60 @@ serve(async (req) => {
 
   try {
     const { symbol } = await req.json();
+    
+    if (!symbol) {
+      throw new Error('Symbol is required');
+    }
+
     console.log('Analyzing:', symbol);
+
+    // Get user's analysis parameters (if authenticated) from the Authorization header
+    const authHeader = req.headers.get('Authorization');
+    let userParams = {
+      rsi_oversold_threshold: 30,
+      rsi_overbought_threshold: 70,
+      atr_multiplier_tp: 2.0,
+      atr_multiplier_sl: 1.0,
+      confidence_threshold: 60,
+      min_bullish_score: 8,
+      max_leverage: 5
+    };
+
+    if (authHeader) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+          global: { headers: { Authorization: authHeader } }
+        });
+        
+        const { data: authData } = await supabaseClient.auth.getUser();
+        
+        if (authData.user) {
+          const { data: params } = await supabaseClient
+            .from('analysis_params')
+            .select('*')
+            .eq('user_id', authData.user.id)
+            .single();
+          
+          if (params) {
+            userParams = {
+              rsi_oversold_threshold: params.rsi_oversold_threshold,
+              rsi_overbought_threshold: params.rsi_overbought_threshold,
+              atr_multiplier_tp: params.atr_multiplier_tp,
+              atr_multiplier_sl: params.atr_multiplier_sl,
+              confidence_threshold: params.confidence_threshold,
+              min_bullish_score: params.min_bullish_score,
+              max_leverage: params.max_leverage
+            };
+            console.log('✅ Using personalized parameters from learning engine');
+          }
+        }
+      } catch (e) {
+        console.log('Using default parameters (auth check failed):', e);
+      }
+    }
 
     // Fetch multiple timeframes for better analysis
     const [klines1h, klines4h, klines1d] = await Promise.all([
@@ -248,13 +301,13 @@ serve(async (req) => {
     let bullishScore = 0;
     let bearishScore = 0;
 
-    // RSI analysis (weight: 2)
-    if (rsi14 < 25) bullishScore += 3;
-    else if (rsi14 < 35) bullishScore += 2;
-    else if (rsi14 < 45) bullishScore += 1;
-    else if (rsi14 > 75) bearishScore += 3;
-    else if (rsi14 > 65) bearishScore += 2;
-    else if (rsi14 > 55) bearishScore += 1;
+    // RSI analysis with personalized thresholds
+    if (rsi14 < userParams.rsi_oversold_threshold - 5) bullishScore += 3;
+    else if (rsi14 < userParams.rsi_oversold_threshold) bullishScore += 2;
+    else if (rsi14 < userParams.rsi_oversold_threshold + 10) bullishScore += 1;
+    else if (rsi14 > userParams.rsi_overbought_threshold + 5) bearishScore += 3;
+    else if (rsi14 > userParams.rsi_overbought_threshold) bearishScore += 2;
+    else if (rsi14 > userParams.rsi_overbought_threshold - 10) bearishScore += 1;
 
     // Stochastic RSI (weight: 1.5)
     if (stochRsi < 20) bullishScore += 2;
@@ -310,15 +363,16 @@ serve(async (req) => {
     const confidence = totalScore > 0 ? (Math.max(bullishScore, bearishScore) / totalScore) * 100 : 50;
 
     let signal: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
-    if (bullishScore > bearishScore && confidence > 58 && bullishScore >= 8) {
+    // Use personalized thresholds from learning engine
+    if (bullishScore > bearishScore && confidence > (userParams.confidence_threshold - 2) && bullishScore >= userParams.min_bullish_score) {
       signal = 'LONG';
-    } else if (bearishScore > bullishScore && confidence > 58 && bearishScore >= 8) {
+    } else if (bearishScore > bullishScore && confidence > (userParams.confidence_threshold - 2) && bearishScore >= userParams.min_bullish_score) {
       signal = 'SHORT';
     }
 
-    // Dynamic TP/SL based on volatility and trend strength
-    const atrMultiplierTP = adx > 25 ? 2.0 : 1.5;
-    const atrMultiplierSL = 1.0;
+    // Dynamic TP/SL based on volatility, trend strength, and personalized multipliers
+    const atrMultiplierTP = adx > 25 ? userParams.atr_multiplier_tp * 1.2 : userParams.atr_multiplier_tp;
+    const atrMultiplierSL = userParams.atr_multiplier_sl;
     
     let takeProfit = 0;
     let stopLoss = 0;
@@ -335,19 +389,19 @@ serve(async (req) => {
       ? Math.abs((takeProfit - currentPrice) / (currentPrice - stopLoss))
       : 0;
 
-    // Advanced leverage calculation
+    // Advanced leverage calculation with personalized max leverage
     const volatilityPercent = (atr14 / currentPrice) * 100;
     const trendStrength = adx;
-    let suggestedLeverage = 2;
+    let suggestedLeverage = Math.min(2, userParams.max_leverage);
     
     if (volatilityPercent < 0.8 && trendStrength > 25 && confidence > 70) {
-      suggestedLeverage = 10;
+      suggestedLeverage = Math.min(10, userParams.max_leverage);
     } else if (volatilityPercent < 1.5 && trendStrength > 20 && confidence > 65) {
-      suggestedLeverage = 7;
+      suggestedLeverage = Math.min(7, userParams.max_leverage);
     } else if (volatilityPercent < 2.5 && confidence > 60) {
-      suggestedLeverage = 5;
+      suggestedLeverage = Math.min(5, userParams.max_leverage);
     } else if (volatilityPercent < 4) {
-      suggestedLeverage = 3;
+      suggestedLeverage = Math.min(3, userParams.max_leverage);
     }
 
     // Fetch 24h ticker

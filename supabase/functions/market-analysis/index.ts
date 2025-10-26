@@ -30,8 +30,39 @@ serve(async (req) => {
   }
 
   try {
-    const { limit = 50, threshold = 65 } = await req.json().catch(() => ({}));
+    const { limit = 100, threshold = 65 } = await req.json().catch(() => ({}));
     console.log(`Starting market analysis with limit=${limit}, threshold=${threshold}`);
+
+    // Fetch CoinGecko data for fundamental analysis
+    let coinGeckoData: any = {};
+    try {
+      const cgResponse = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&sparkline=false');
+      const cgCoins = await cgResponse.json();
+      coinGeckoData = cgCoins.reduce((acc: any, coin: any) => {
+        const symbol = coin.symbol.toUpperCase();
+        acc[symbol] = {
+          marketCap: coin.market_cap,
+          fullyDilutedValuation: coin.fully_diluted_valuation,
+          circulatingSupply: coin.circulating_supply,
+          totalSupply: coin.total_supply,
+          marketCapRank: coin.market_cap_rank,
+          priceChange7d: coin.price_change_percentage_7d_in_currency || 0
+        };
+        return acc;
+      }, {});
+      console.log(`Fetched ${Object.keys(coinGeckoData).length} coins from CoinGecko`);
+    } catch (error) {
+      console.error('CoinGecko API error:', error);
+    }
+
+    // Check market-wide volatility for safety mode
+    const btcData = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r => r.json());
+    const btcVolatility = Math.abs(parseFloat(btcData.priceChangePercent));
+    const safetyMode = btcVolatility > 10; // Activate safety if BTC moves >10% in 24h
+    
+    if (safetyMode) {
+      console.log(`⚠️ SAFETY MODE ACTIVATED - BTC volatility: ${btcVolatility.toFixed(2)}%`);
+    }
 
     // Fetch top cryptocurrencies by market cap
     const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
@@ -110,16 +141,45 @@ serve(async (req) => {
         else if (volumeIncrease > 40) technicalScore += 3;
         else if (volumeIncrease > 15) technicalScore += 1;
 
-        // FUNDAMENTAL SCORING (30 points max)
+        // FUNDAMENTAL SCORING (35 points max) - Enhanced with CoinGecko data
         let fundamentalScore = 0;
+        const baseName = ticker.symbol.replace('USDT', '');
+        const cgData = coinGeckoData[baseName];
         
-        // Market cap proxy via quote volume (15 points)
-        // Higher volume = more liquidity = better fundamentals
-        if (quoteVolume > 1000000000) fundamentalScore += 15; // >1B
-        else if (quoteVolume > 500000000) fundamentalScore += 12; // >500M
-        else if (quoteVolume > 100000000) fundamentalScore += 8; // >100M
-        else if (quoteVolume > 50000000) fundamentalScore += 5; // >50M
-        else fundamentalScore -= 5; // Low liquidity penalty
+        if (cgData) {
+          // Market cap ranking (10 points)
+          if (cgData.marketCapRank <= 10) fundamentalScore += 10;
+          else if (cgData.marketCapRank <= 30) fundamentalScore += 8;
+          else if (cgData.marketCapRank <= 100) fundamentalScore += 5;
+          else if (cgData.marketCapRank <= 200) fundamentalScore += 3;
+          
+          // Market cap vs FDV ratio (10 points) - Lower dilution is better
+          if (cgData.fullyDilutedValuation && cgData.marketCap) {
+            const mcFdvRatio = cgData.marketCap / cgData.fullyDilutedValuation;
+            if (mcFdvRatio > 0.9) fundamentalScore += 10; // Low dilution
+            else if (mcFdvRatio > 0.7) fundamentalScore += 7;
+            else if (mcFdvRatio > 0.5) fundamentalScore += 4;
+            else fundamentalScore -= 5; // High future dilution risk
+          }
+          
+          // Liquidity via market cap (10 points)
+          if (cgData.marketCap > 10000000000) fundamentalScore += 10; // >10B
+          else if (cgData.marketCap > 1000000000) fundamentalScore += 7; // >1B
+          else if (cgData.marketCap > 100000000) fundamentalScore += 4; // >100M
+          else fundamentalScore -= 3; // Low cap risk
+          
+          // 7-day trend (5 points)
+          if (cgData.priceChange7d > 10) fundamentalScore += 5;
+          else if (cgData.priceChange7d > 5) fundamentalScore += 3;
+          else if (cgData.priceChange7d < -15) fundamentalScore -= 5;
+        } else {
+          // Fallback to volume-based scoring if no CoinGecko data
+          if (quoteVolume > 1000000000) fundamentalScore += 12;
+          else if (quoteVolume > 500000000) fundamentalScore += 9;
+          else if (quoteVolume > 100000000) fundamentalScore += 6;
+          else if (quoteVolume > 50000000) fundamentalScore += 3;
+          else fundamentalScore -= 5;
+        }
 
         // Price stability assessment (10 points)
         const priceVolatility = Math.abs(priceChange24h);
@@ -133,9 +193,13 @@ serve(async (req) => {
         if (volumeCV < 0.5) fundamentalScore += 5; // Consistent volume
         else if (volumeCV < 1) fundamentalScore += 2;
 
-        // SENTIMENT SCORING (30 points max)
-        // Simplified sentiment based on market behavior
+        // SENTIMENT SCORING (30 points max) - Will be enhanced with news later
         let sentimentScore = 0;
+        
+        // Safety mode penalty
+        if (safetyMode) {
+          sentimentScore -= 10; // Reduce all scores in high volatility environment
+        }
         
         // Price action sentiment (15 points)
         if (priceChange24h > 15 && volumeIncrease > 50) sentimentScore += 15; // Strong bullish
@@ -153,7 +217,7 @@ serve(async (req) => {
         // TOTAL SCORE (100 points max)
         const totalScore = technicalScore + fundamentalScore + sentimentScore;
 
-        // Only include opportunities above threshold
+        // Only include opportunities above threshold (dynamic based on safety mode)
         if (totalScore >= threshold) {
           const baseName = ticker.symbol.replace('USDT', '');
           
@@ -206,15 +270,24 @@ serve(async (req) => {
 
     // Sort by score
     opportunities.sort((a, b) => b.score - a.score);
+    
+    // Apply safety mode filtering after sorting
+    const effectiveThreshold = safetyMode ? threshold + 10 : threshold;
+    const filteredOpportunities = opportunities.filter(o => o.score >= effectiveThreshold);
 
-    console.log(`Found ${opportunities.length} opportunities above threshold ${threshold}`);
+    console.log(`Found ${filteredOpportunities.length} opportunities above effective threshold ${effectiveThreshold}`);
 
     return new Response(
       JSON.stringify({ 
-        opportunities,
+        opportunities: filteredOpportunities,
         analyzed: Math.min(limit, usdtPairs.length),
-        threshold,
-        resultsCount: opportunities.length
+        threshold: effectiveThreshold,
+        resultsCount: filteredOpportunities.length,
+        safetyMode,
+        marketConditions: {
+          btcVolatility: btcVolatility.toFixed(2) + '%',
+          warning: safetyMode ? 'Forte volatilité détectée - Seuil augmenté de 10 points' : null
+        }
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -328,86 +401,40 @@ function generateDetailedThesis(
   catalysts: string[],
   score: number
 ): string {
-  let thesis = `**${name}** | Score: ${score.toFixed(1)}/100\n\n`;
+  // Shorter, more concise thesis
+  let thesis = `**${name}** (${score.toFixed(0)}/100)\n\n`;
   
-  // Market positioning
-  thesis += `📊 **POSITIONNEMENT MARCHÉ**\n`;
-  if (drawdown < -60) {
-    thesis += `• Drawdown critique de ${drawdown.toFixed(1)}% depuis ATH - zone de valeur historique\n`;
-  } else if (drawdown < -40) {
-    thesis += `• Correction significative de ${drawdown.toFixed(1)}% depuis ATH\n`;
-  } else if (drawdown > -15) {
-    thesis += `• Prix proche des sommets (${drawdown.toFixed(1)}% de l'ATH)\n`;
-  }
-
-  // Technical analysis
-  thesis += `\n📈 **ANALYSE TECHNIQUE**\n`;
-  if (rsi < 30) {
-    thesis += `• RSI en survente extrême (${rsi.toFixed(1)}) - opportunité d'achat technique majeure\n`;
-  } else if (rsi < 40) {
-    thesis += `• RSI à ${rsi.toFixed(1)} - zone d'accumulation favorable\n`;
-  } else if (rsi > 70) {
-    thesis += `• RSI en surachat (${rsi.toFixed(1)}) - prudence recommandée\n`;
-  } else {
-    thesis += `• RSI neutre à ${rsi.toFixed(1)}\n`;
-  }
-
-  if (momentum > 8) {
-    thesis += `• Momentum explosif (+${momentum.toFixed(1)}%) - tendance haussière forte établie\n`;
-  } else if (momentum > 3) {
-    thesis += `• Momentum positif (+${momentum.toFixed(1)}%) - reprise en cours\n`;
-  } else if (momentum > 0) {
-    thesis += `• Début de retournement haussier (+${momentum.toFixed(1)}%)\n`;
-  } else {
-    thesis += `• Momentum baissier (${momentum.toFixed(1)}%) - attendre confirmation\n`;
-  }
-
-  // Volume analysis
-  thesis += `\n💰 **ANALYSE DES VOLUMES**\n`;
-  thesis += `• Volume quotidien: $${(quoteVolume / 1000000).toFixed(0)}M\n`;
-  if (volumeIncrease > 80) {
-    thesis += `• Explosion des volumes (+${volumeIncrease.toFixed(0)}%) - attention institutionnelle majeure\n`;
-  } else if (volumeIncrease > 40) {
-    thesis += `• Volumes en forte hausse (+${volumeIncrease.toFixed(0)}%) - intérêt croissant\n`;
-  } else if (volumeIncrease > 0) {
-    thesis += `• Volumes en hausse modérée (+${volumeIncrease.toFixed(0)}%)\n`;
-  } else {
-    thesis += `• Volumes en baisse (${volumeIncrease.toFixed(0)}%) - surveiller la liquidité\n`;
-  }
-
-  // Price action
-  if (Math.abs(priceChange24h) > 5) {
-    thesis += `• Variation 24h: ${priceChange24h > 0 ? '+' : ''}${priceChange24h.toFixed(1)}%`;
-    if (priceChange24h > 15) {
-      thesis += ` - mouvement parabolique en cours\n`;
-    } else if (priceChange24h > 8) {
-      thesis += ` - dynamique haussière confirmée\n`;
-    } else if (priceChange24h < -15) {
-      thesis += ` - correction brutale en cours\n`;
-    } else {
-      thesis += `\n`;
-    }
-  }
-
-  // Catalysts
-  if (catalysts.length > 0) {
-    thesis += `\n🎯 **CATALYSEURS IDENTIFIÉS**\n`;
-    catalysts.forEach(catalyst => {
-      thesis += `• ${catalyst}\n`;
-    });
-  }
-
-  // Conclusion
-  thesis += `\n📝 **CONCLUSION**\n`;
-  if (score >= 85) {
-    thesis += `Opportunité exceptionnelle avec convergence forte de tous les indicateurs. Setup haute probabilité.`;
-  } else if (score >= 75) {
-    thesis += `Très bonne opportunité avec indicateurs majoritairement favorables. Configuration intéressante.`;
-  } else if (score >= 65) {
-    thesis += `Opportunité valide avec potentiel correct. Surveiller l'évolution des indicateurs.`;
-  } else {
-    thesis += `Setup acceptable mais nécessite confirmation supplémentaire.`;
-  }
+  // Concise summary format
+  const points = [];
+  
+  // Position
+  if (drawdown < -60) points.push(`📉 Drawdown ${drawdown.toFixed(0)}% ATH - valeur historique`);
+  else if (drawdown < -40) points.push(`📉 Correction ${drawdown.toFixed(0)}% ATH`);
+  else if (drawdown > -15) points.push(`⚠️ Proche des sommets`);
+  
+  // Technical
+  if (rsi < 30) points.push(`🟢 RSI survente (${rsi.toFixed(0)})`);
+  else if (rsi > 70) points.push(`🔴 RSI surachat (${rsi.toFixed(0)})`);
+  else points.push(`⚪ RSI ${rsi.toFixed(0)}`);
+  
+  if (momentum > 5) points.push(`📈 Momentum fort +${momentum.toFixed(1)}%`);
+  else if (momentum < 0) points.push(`📉 Momentum -${Math.abs(momentum).toFixed(1)}%`);
+  
+  // Volume
+  if (volumeIncrease > 80) points.push(`💥 Vol. +${volumeIncrease.toFixed(0)}%`);
+  else if (volumeIncrease > 40) points.push(`📊 Vol. +${volumeIncrease.toFixed(0)}%`);
+  
+  // Catalysts (max 2)
+  const topCatalysts = catalysts.slice(0, 2);
+  topCatalysts.forEach(c => points.push(`🎯 ${c.substring(0, 50)}...`));
+  
+  thesis += points.join('\n• ') + '\n\n';
+  
+  // Quick conclusion
+  if (score >= 85) thesis += `✅ **Setup exceptionnel** - Haute probabilité`;
+  else if (score >= 75) thesis += `✅ **Bonne opportunité** - Indicateurs favorables`;
+  else if (score >= 65) thesis += `⚠️ **Potentiel correct** - Surveiller évolution`;
+  else thesis += `⚠️ **Confirmation nécessaire**`;
 
   return thesis;
 }

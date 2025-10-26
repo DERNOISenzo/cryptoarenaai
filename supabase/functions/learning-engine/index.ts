@@ -195,12 +195,40 @@ serve(async (req) => {
       recommendations: insights.recommendations.length
     });
 
+    // Save or update analysis parameters for this user
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData.user) {
+      const { error: upsertError } = await supabase
+        .from('analysis_params')
+        .upsert({
+          user_id: authData.user.id,
+          rsi_oversold_threshold: insights.adjustments.rsi_oversold_threshold,
+          rsi_overbought_threshold: insights.adjustments.rsi_overbought_threshold,
+          atr_multiplier_tp: insights.adjustments.atr_multiplier_tp,
+          atr_multiplier_sl: insights.adjustments.atr_multiplier_sl,
+          confidence_threshold: insights.adjustments.confidence_threshold,
+          min_bullish_score: insights.adjustments.min_bullish_score,
+          preferred_signal: insights.adjustments.preferred_signal,
+          max_leverage: insights.adjustments.max_leverage,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (upsertError) {
+        console.error('Failed to save analysis params:', upsertError);
+      } else {
+        console.log('✅ Analysis parameters updated for user');
+      }
+    }
+
     return new Response(JSON.stringify({ 
       stats,
       insights,
       patternAnalysis,
       timestamp: new Date().toISOString(),
-      message: 'Analysis complete'
+      message: 'Analysis complete',
+      parametersUpdated: !!authData.user
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

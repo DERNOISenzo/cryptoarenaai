@@ -117,8 +117,8 @@ const MarketAnalysis = () => {
                     <div className="flex items-center justify-between">
                       <h3 className="text-2xl font-bold">{opp.name}</h3>
                       <div className="flex items-center gap-2">
-                        <span className="text-3xl font-bold text-primary">{opp.score.toFixed(1)}</span>
-                        <span className="text-sm text-muted-foreground">/10</span>
+                        <span className="text-3xl font-bold text-primary">{opp.score.toFixed(0)}</span>
+                        <span className="text-sm text-muted-foreground">/100</span>
                       </div>
                     </div>
 
