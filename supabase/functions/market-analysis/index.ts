@@ -30,8 +30,32 @@ serve(async (req) => {
   }
 
   try {
-    const { limit = 100, threshold = 65 } = await req.json().catch(() => ({}));
-    console.log(`Starting market analysis with limit=${limit}, threshold=${threshold}`);
+    const { limit = 100, threshold = 65, userId } = await req.json().catch(() => ({}));
+    
+    // Fetch user's personalized parameters if userId provided
+    let userParams = null;
+    if (userId) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
+        const { data: params } = await supabase
+          .from('analysis_params')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+        userParams = params;
+      } catch (e) {
+        console.log('No personalized parameters found, using defaults');
+      }
+    }
+    
+    const effectiveThreshold = userParams?.confidence_threshold || threshold;
+    const minBullishScore = userParams?.min_bullish_score || 8;
+    
+    console.log(`Market analysis with limit=${limit}, threshold=${effectiveThreshold}${userParams ? ' (personalized)' : ''}`);
 
     // Fetch CoinGecko data for fundamental analysis
     let coinGeckoData: any = {};
@@ -217,8 +241,8 @@ serve(async (req) => {
         // TOTAL SCORE (100 points max)
         const totalScore = technicalScore + fundamentalScore + sentimentScore;
 
-        // Only include opportunities above threshold (dynamic based on safety mode)
-        if (totalScore >= threshold) {
+    // Only include opportunities above effective threshold
+        if (totalScore >= effectiveThreshold) {
           const baseName = ticker.symbol.replace('USDT', '');
           
           // Identify catalysts
@@ -272,16 +296,16 @@ serve(async (req) => {
     opportunities.sort((a, b) => b.score - a.score);
     
     // Apply safety mode filtering after sorting
-    const effectiveThreshold = safetyMode ? threshold + 10 : threshold;
-    const filteredOpportunities = opportunities.filter(o => o.score >= effectiveThreshold);
+    const finalThreshold = safetyMode ? effectiveThreshold + 10 : effectiveThreshold;
+    const filteredOpportunities = opportunities.filter(o => o.score >= finalThreshold);
 
-    console.log(`Found ${filteredOpportunities.length} opportunities above effective threshold ${effectiveThreshold}`);
+    console.log(`Found ${filteredOpportunities.length} opportunities above final threshold ${finalThreshold}${safetyMode ? ' (safety mode active)' : ''}`);
 
     return new Response(
       JSON.stringify({ 
         opportunities: filteredOpportunities,
         analyzed: Math.min(limit, usdtPairs.length),
-        threshold: effectiveThreshold,
+        threshold: finalThreshold,
         resultsCount: filteredOpportunities.length,
         safetyMode,
         marketConditions: {

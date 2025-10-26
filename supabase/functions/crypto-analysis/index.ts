@@ -458,31 +458,45 @@ serve(async (req) => {
   }
 });
 
-// Calculate estimated time horizon for the trade
+// Calculate estimated time horizon based on volatility percentage
 function calculateTimeHorizon(atr: number, price: number, tp: number, sl: number, volatility: number): {
   estimate: string;
   type: 'scalp' | 'intraday' | 'swing' | 'position';
   hours: number;
 } {
   const targetDistance = Math.abs(tp - price);
-  const avgMovePerHour = atr / 24; // Approximate hourly movement
-  const estimatedHours = targetDistance / avgMovePerHour;
+  const distancePercent = (targetDistance / price) * 100;
+  
+  // Use volatility percentage for more realistic estimates
+  const avgHourlyVolatility = Math.abs(volatility) / 24;
+  
+  if (avgHourlyVolatility === 0 || distancePercent === 0) {
+    return { estimate: 'Indéterminé', type: 'swing', hours: 0 };
+  }
+  
+  // Estimate hours based on percentage moves
+  let estimatedHours = distancePercent / avgHourlyVolatility;
+  
+  // Cap maximum at 6 weeks (1008 hours)
+  estimatedHours = Math.min(estimatedHours, 1008);
   
   let type: 'scalp' | 'intraday' | 'swing' | 'position';
   let estimate: string;
   
   if (estimatedHours < 4) {
     type = 'scalp';
-    estimate = `${Math.round(estimatedHours * 60)} minutes`;
+    estimate = `${Math.round(estimatedHours)} heures`;
   } else if (estimatedHours < 24) {
     type = 'intraday';
     estimate = `${Math.round(estimatedHours)} heures`;
   } else if (estimatedHours < 168) {
     type = 'swing';
-    estimate = `${Math.round(estimatedHours / 24)} jours`;
+    const days = Math.round(estimatedHours / 24);
+    estimate = `${days} jour${days > 1 ? 's' : ''}`;
   } else {
     type = 'position';
-    estimate = `${Math.round(estimatedHours / 168)} semaines`;
+    const weeks = Math.min(6, Math.round(estimatedHours / 168));
+    estimate = `${weeks} semaine${weeks > 1 ? 's' : ''}`;
   }
   
   return { estimate, type, hours: estimatedHours };
