@@ -161,6 +161,142 @@ function calculateADX(highs: number[], lows: number[], closes: number[], period 
   return dx;
 }
 
+// Calculate time horizon with annualized volatility
+function calculateTimeHorizon(
+  closes: number[],
+  atr: number,
+  currentPrice: number,
+  takeProfit: number,
+  volume24h: number
+): { estimate: string; type: string; hours: number; confidence: number } {
+  if (closes.length < 20) {
+    return { estimate: "N/A", type: "INSUFFISANT", hours: 0, confidence: 0 };
+  }
+
+  // Calculate daily returns
+  const returns: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+  }
+
+  // Standard deviation of returns
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  const dailyVolatility = Math.sqrt(variance);
+
+  // Distance to TP in percentage
+  const distancePercent = Math.abs(takeProfit - currentPrice) / currentPrice;
+
+  // Expected move per day = daily volatility * current price
+  const expectedDailyMove = dailyVolatility * currentPrice;
+
+  // Estimate days to reach TP (with adjustment factor for directional bias)
+  let estimatedDays = expectedDailyMove > 0 ? distancePercent / dailyVolatility : 999;
+
+  // Adjust based on volume (high volume = faster moves)
+  const volumeAdjustment = Math.min(1.5, Math.max(0.7, volume24h / (currentPrice * 1000000)));
+  estimatedDays = estimatedDays / volumeAdjustment;
+
+  // Cap at realistic maximum (4 weeks = 28 days)
+  estimatedDays = Math.min(estimatedDays, 28);
+  const estimatedHours = Math.round(estimatedDays * 24);
+
+  // Confidence based on consistency of volatility
+  const volatilityStd = Math.sqrt(
+    returns.map(r => Math.pow(Math.abs(r) - dailyVolatility, 2)).reduce((a, b) => a + b, 0) / returns.length
+  );
+  const confidence = Math.max(40, Math.min(95, 100 - (volatilityStd / dailyVolatility) * 100));
+
+  let estimate: string;
+  let type: string;
+
+  if (estimatedDays < 1) {
+    estimate = `${estimatedHours}h`;
+    type = "INTRADAY";
+  } else if (estimatedDays < 7) {
+    const days = Math.round(estimatedDays);
+    estimate = `${days}j`;
+    type = "COURT TERME";
+  } else if (estimatedDays < 21) {
+    const weeks = Math.round(estimatedDays / 7);
+    estimate = `${weeks}sem`;
+    type = "SWING";
+  } else {
+    estimate = "4sem+";
+    type = "LONG TERME";
+  }
+
+  return { estimate, type, hours: estimatedHours, confidence: Math.round(confidence) };
+}
+
+// Detect chart patterns
+function detectPatterns(closes: number[], highs: number[], lows: number[]): string[] {
+  const patterns: string[] = [];
+  const len = closes.length;
+  if (len < 20) return patterns;
+
+  // Check for Double Bottom
+  const recentLows = lows.slice(-20);
+  const minLow = Math.min(...recentLows);
+  const minIndices = recentLows.map((v, i) => v === minLow ? i : -1).filter(i => i !== -1);
+  if (minIndices.length >= 2 && minIndices[minIndices.length - 1] - minIndices[0] > 5) {
+    patterns.push("Double Bottom");
+  }
+
+  // Check for Double Top
+  const recentHighs = highs.slice(-20);
+  const maxHigh = Math.max(...recentHighs);
+  const maxIndices = recentHighs.map((v, i) => v === maxHigh ? i : -1).filter(i => i !== -1);
+  if (maxIndices.length >= 2 && maxIndices[maxIndices.length - 1] - maxIndices[0] > 5) {
+    patterns.push("Double Top");
+  }
+
+  // Check for Ascending Triangle
+  const midLows = lows.slice(-15);
+  const midHighs = highs.slice(-15);
+  const avgHigh = midHighs.reduce((a, b) => a + b, 0) / midHighs.length;
+  const highVariance = midHighs.reduce((sum, h) => sum + Math.pow(h - avgHigh, 2), 0) / midHighs.length;
+  const lowsTrend = midLows[midLows.length - 1] > midLows[0];
+  if (highVariance < avgHigh * 0.01 && lowsTrend) {
+    patterns.push("Triangle Ascendant");
+  }
+
+  // Check for Head and Shoulders
+  if (len >= 30) {
+    const h = highs.slice(-30);
+    const peak1 = Math.max(...h.slice(0, 10));
+    const peak2 = Math.max(...h.slice(10, 20));
+    const peak3 = Math.max(...h.slice(20, 30));
+    if (peak2 > peak1 && peak2 > peak3 && Math.abs(peak1 - peak3) < peak1 * 0.05) {
+      patterns.push("Tête et Épaules");
+    }
+  }
+
+  return patterns;
+}
+
+// Calculate position size
+function calculatePositionSize(
+  accountBalance: number,
+  entryPrice: number,
+  stopLoss: number,
+  riskPercent: number,
+  leverage: number
+): { size: number; margin: number; risk: number } {
+  const riskAmount = accountBalance * (riskPercent / 100);
+  const stopDistance = Math.abs(entryPrice - stopLoss);
+  const stopDistancePercent = stopDistance / entryPrice;
+  
+  const positionSize = riskAmount / (stopDistancePercent * entryPrice);
+  const margin = (positionSize * entryPrice) / leverage;
+  
+  return {
+    size: Math.round(positionSize * 1000) / 1000,
+    margin: Math.round(margin * 100) / 100,
+    risk: riskAmount
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -186,6 +322,31 @@ serve(async (req) => {
       min_bullish_score: 8,
       max_leverage: 5
     };
+
+    // Security mode: check market-wide volatility
+    let securityMode = false;
+
+    // Check BTC volatility for security mode
+    try {
+      const btcResponse = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=14`);
+      if (btcResponse.ok) {
+        const btcKlines = await btcResponse.json();
+        const btcCloses = btcKlines.map((k: any) => parseFloat(k[4]));
+        const btcReturns = [];
+        for (let i = 1; i < btcCloses.length; i++) {
+          btcReturns.push(Math.abs((btcCloses[i] - btcCloses[i-1]) / btcCloses[i-1]));
+        }
+        const avgBtcVolatility = btcReturns.reduce((a, b) => a + b, 0) / btcReturns.length;
+        
+        // If BTC volatility exceeds 5% daily average, activate security mode
+        if (avgBtcVolatility > 0.05) {
+          securityMode = true;
+          console.log('⚠️ Security mode activated - high market volatility detected');
+        }
+      }
+    } catch (e) {
+      console.log('Could not check BTC volatility for security mode');
+    }
 
     if (authHeader) {
       try {
@@ -479,152 +640,6 @@ serve(async (req) => {
     });
   }
 });
-
-// Detect chart patterns
-function detectPatterns(closes: number[], highs: number[], lows: number[]): string[] {
-  const patterns: string[] = [];
-  const len = closes.length;
-  
-  if (len < 20) return patterns;
-  
-  // Double Bottom detection
-  const recentLows = lows.slice(-20);
-  const minLow = Math.min(...recentLows);
-  const lowIndices = recentLows.map((l, i) => l === minLow ? i : -1).filter(i => i !== -1);
-  if (lowIndices.length >= 2 && Math.abs(lowIndices[0] - lowIndices[lowIndices.length - 1]) > 5) {
-    patterns.push('Double Bottom');
-  }
-  
-  // Double Top detection
-  const recentHighs = highs.slice(-20);
-  const maxHigh = Math.max(...recentHighs);
-  const highIndices = recentHighs.map((h, i) => h === maxHigh ? i : -1).filter(i => i !== -1);
-  if (highIndices.length >= 2 && Math.abs(highIndices[0] - highIndices[highIndices.length - 1]) > 5) {
-    patterns.push('Double Top');
-  }
-  
-  // Ascending Triangle (higher lows, flat resistance)
-  const last10Lows = lows.slice(-10);
-  const last10Highs = highs.slice(-10);
-  const lowsIncreasing = last10Lows.every((l, i) => i === 0 || l >= last10Lows[i - 1] - (last10Lows[0] * 0.01));
-  const highsFlat = Math.max(...last10Highs) - Math.min(...last10Highs) < (closes[len - 1] * 0.03);
-  if (lowsIncreasing && highsFlat) {
-    patterns.push('Triangle Ascendant');
-  }
-  
-  // Head and Shoulders
-  if (len >= 30) {
-    const mid = len - 15;
-    const leftShoulder = highs[mid - 10];
-    const head = highs[mid];
-    const rightShoulder = highs[mid + 10];
-    if (head > leftShoulder && head > rightShoulder && Math.abs(leftShoulder - rightShoulder) < (head * 0.05)) {
-      patterns.push('Tête-Épaules');
-    }
-  }
-  
-  return patterns;
-}
-
-// Calculate position size based on risk percentage
-function calculatePositionSize(
-  accountBalance: number,
-  entryPrice: number,
-  stopLoss: number,
-  riskPercent: number,
-  leverage: number
-): {
-  positionSize: number;
-  dollarRisk: number;
-  quantity: number;
-} {
-  const dollarRisk = accountBalance * (riskPercent / 100);
-  const stopDistance = Math.abs(entryPrice - stopLoss);
-  const stopPercent = (stopDistance / entryPrice) * 100;
-  
-  // Position size in dollars considering leverage
-  const positionSize = (dollarRisk / stopPercent) * 100 * leverage;
-  const quantity = positionSize / entryPrice;
-  
-  return {
-    positionSize: Math.round(positionSize * 100) / 100,
-    dollarRisk: Math.round(dollarRisk * 100) / 100,
-    quantity: Math.round(quantity * 100000) / 100000
-  };
-}
-
-// Calculate estimated time horizon based on historical volatility and liquidity
-function calculateTimeHorizon(
-  closes: number[], 
-  atr: number, 
-  price: number, 
-  tp: number, 
-  volume24h: number
-): {
-  estimate: string;
-  type: 'scalp' | 'intraday' | 'swing' | 'position';
-  hours: number;
-  confidence: 'low' | 'medium' | 'high';
-} {
-  const targetDistance = Math.abs(tp - price);
-  const distancePercent = (targetDistance / price) * 100;
-  
-  // Calculate historical move speed from last 30 closes
-  const recentCloses = closes.slice(-30);
-  let totalMovePercent = 0;
-  let moveCount = 0;
-  
-  for (let i = 1; i < recentCloses.length; i++) {
-    const movePercent = Math.abs((recentCloses[i] - recentCloses[i - 1]) / recentCloses[i - 1]) * 100;
-    totalMovePercent += movePercent;
-    moveCount++;
-  }
-  
-  const avgHourlyMove = moveCount > 0 ? totalMovePercent / moveCount : 0;
-  
-  if (avgHourlyMove === 0 || distancePercent === 0) {
-    return { estimate: 'Indéterminé', type: 'swing', hours: 0, confidence: 'low' };
-  }
-  
-  // Estimate based on real historical speed
-  let estimatedHours = distancePercent / avgHourlyMove;
-  
-  // Liquidity adjustment - high volume = faster moves
-  const liquidityMultiplier = volume24h > 1000000000 ? 0.8 : volume24h > 100000000 ? 1.0 : 1.3;
-  estimatedHours *= liquidityMultiplier;
-  
-  // Cap at realistic maximum (4 weeks)
-  estimatedHours = Math.min(estimatedHours, 672);
-  
-  // Confidence based on data quality and volatility consistency
-  const recentVolatility = recentCloses.slice(-10).map((c, i, arr) => 
-    i === 0 ? 0 : Math.abs((c - arr[i - 1]) / arr[i - 1])
-  );
-  const volatilityStdDev = calculateStdDev(recentVolatility);
-  const confidence: 'low' | 'medium' | 'high' = 
-    volatilityStdDev < 0.01 ? 'high' : volatilityStdDev < 0.02 ? 'medium' : 'low';
-  
-  let type: 'scalp' | 'intraday' | 'swing' | 'position';
-  let estimate: string;
-  
-  if (estimatedHours < 6) {
-    type = 'scalp';
-    estimate = `${Math.round(estimatedHours)} heures`;
-  } else if (estimatedHours < 24) {
-    type = 'intraday';
-    estimate = `${Math.round(estimatedHours)} heures`;
-  } else if (estimatedHours < 168) {
-    type = 'swing';
-    const days = Math.round(estimatedHours / 24);
-    estimate = `${days} jour${days > 1 ? 's' : ''}`;
-  } else {
-    type = 'position';
-    const weeks = Math.round(estimatedHours / 168);
-    estimate = `${weeks} semaine${weeks > 1 ? 's' : ''}`;
-  }
-  
-  return { estimate, type, hours: estimatedHours, confidence };
-}
 
 function calculateStdDev(values: number[]): number {
   if (values.length === 0) return 0;

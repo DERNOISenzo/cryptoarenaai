@@ -4,9 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, Sparkles, Brain } from "lucide-react";
+import { ArrowLeft, TrendingUp, Sparkles, Brain, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
+import LearningEnginePanel from "@/components/LearningEnginePanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Opportunity {
   symbol: string;
@@ -108,17 +110,36 @@ const MarketAnalysis = () => {
             </p>
           </div>
 
-          <div className="grid gap-6">
+          <Tabs defaultValue="opportunities" className="w-full">
+            <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+              <TabsTrigger value="opportunities">Opportunités</TabsTrigger>
+              <TabsTrigger value="learning">
+                <Settings className="w-4 h-4 mr-2" />
+                Optimisation IA
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="opportunities" className="space-y-6 mt-6">
+              <div className="grid gap-6">
             {opportunities.map((opp, idx) => (
               <Card key={idx} className="p-6 hover:shadow-xl transition-shadow">
                 <div className="grid md:grid-cols-3 gap-6">
                   {/* Left: Basic Info */}
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between">
                       <h3 className="text-2xl font-bold">{opp.name}</h3>
-                      <div className="flex items-center gap-2">
-                        <span className="text-3xl font-bold text-primary">{opp.score.toFixed(0)}</span>
-                        <span className="text-sm text-muted-foreground">/100</span>
+                      <div className="flex flex-col items-end">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-4xl font-bold text-primary">{opp.score.toFixed(0)}</span>
+                          <span className="text-lg text-muted-foreground">/100</span>
+                        </div>
+                        <Badge className={
+                          opp.score >= 80 ? "bg-success" :
+                          opp.score >= 65 ? "bg-primary" :
+                          "bg-warning"
+                        }>
+                          {opp.score >= 80 ? "Excellent" : opp.score >= 65 ? "Bon" : "Correct"}
+                        </Badge>
                       </div>
                     </div>
 
@@ -158,24 +179,43 @@ const MarketAnalysis = () => {
                       <TrendingUp className="w-5 h-5 text-primary" />
                       <h4 className="font-semibold">Thèse d'investissement</h4>
                     </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {opp.thesis}
-                    </p>
+                    {opp.thesis.includes('•') || opp.thesis.includes('-') ? (
+                      <div className="text-sm text-muted-foreground leading-relaxed space-y-1">
+                        {opp.thesis.split(/[•-]/).filter(t => t.trim()).map((point, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="text-primary mt-1">•</span>
+                            <span>{point.trim()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {opp.thesis}
+                      </p>
+                    )}
                   </div>
                 </div>
               </Card>
             ))}
-          </div>
+              </div>
 
-          {opportunities.length === 0 && (
-            <Card className="p-12 text-center">
-              <Brain className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Aucune opportunité détectée</h3>
-              <p className="text-muted-foreground">
-                Le marché ne présente pas d'opportunités majeures actuellement.
-              </p>
-            </Card>
-          )}
+              {opportunities.length === 0 && (
+                <Card className="p-12 text-center">
+                  <Brain className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Aucune opportunité détectée</h3>
+                  <p className="text-muted-foreground">
+                    Le marché ne présente pas d'opportunités majeures actuellement.
+                  </p>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="learning" className="mt-6">
+              <LearningEnginePanel />
+            </TabsContent>
+          </Tabs>
+          
+
         </div>
       </div>
     </div>
