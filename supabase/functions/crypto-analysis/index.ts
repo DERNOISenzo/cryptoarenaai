@@ -354,6 +354,9 @@ serve(async (req) => {
     const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
     const ticker = await tickerRes.json();
 
+    // Calculate time horizon based on ATR and volatility
+    const timeHorizon = calculateTimeHorizon(atr14, currentPrice, takeProfit, stopLoss, volatilityPercent);
+
     const analysis = {
       signal,
       confidence: Math.round(confidence * 10) / 10,
@@ -369,6 +372,7 @@ serve(async (req) => {
       bearishSignals: bearishScore,
       trendAlignment,
       adxStrength: adx,
+      timeHorizon, // Added time horizon
       recommendation: generateRecommendation(
         signal, 
         confidence, 
@@ -381,7 +385,8 @@ serve(async (req) => {
         sma50,
         adx,
         trendAlignment,
-        volatilityPercent
+        volatilityPercent,
+        timeHorizon
       )
     };
 
@@ -399,6 +404,36 @@ serve(async (req) => {
   }
 });
 
+// Calculate estimated time horizon for the trade
+function calculateTimeHorizon(atr: number, price: number, tp: number, sl: number, volatility: number): {
+  estimate: string;
+  type: 'scalp' | 'intraday' | 'swing' | 'position';
+  hours: number;
+} {
+  const targetDistance = Math.abs(tp - price);
+  const avgMovePerHour = atr / 24; // Approximate hourly movement
+  const estimatedHours = targetDistance / avgMovePerHour;
+  
+  let type: 'scalp' | 'intraday' | 'swing' | 'position';
+  let estimate: string;
+  
+  if (estimatedHours < 4) {
+    type = 'scalp';
+    estimate = `${Math.round(estimatedHours * 60)} minutes`;
+  } else if (estimatedHours < 24) {
+    type = 'intraday';
+    estimate = `${Math.round(estimatedHours)} heures`;
+  } else if (estimatedHours < 168) {
+    type = 'swing';
+    estimate = `${Math.round(estimatedHours / 24)} jours`;
+  } else {
+    type = 'position';
+    estimate = `${Math.round(estimatedHours / 168)} semaines`;
+  }
+  
+  return { estimate, type, hours: estimatedHours };
+}
+
 function generateRecommendation(
   signal: string, 
   confidence: number, 
@@ -411,9 +446,11 @@ function generateRecommendation(
   sma50: number,
   adx: number,
   trendAlignment: boolean,
-  volatility: number
+  volatility: number,
+  timeHorizon: any
 ): string {
-  let rec = `Signal ${signal} avec ${confidence.toFixed(1)}% de confiance.\n\n`;
+  let rec = `Signal ${signal} avec ${confidence.toFixed(1)}% de confiance.\n`;
+  rec += `HORIZON TEMPOREL: ${timeHorizon.estimate} (${timeHorizon.type.toUpperCase()})\n\n`;
   
   if (signal === 'LONG') {
     rec += `ANALYSE TECHNIQUE:\n`;

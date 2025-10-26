@@ -107,16 +107,16 @@ serve(async (req) => {
     const { symbol, baseAsset } = await req.json();
     console.log('Fetching news for:', symbol, baseAsset);
 
-    // 8 sources d'actualités crypto (RSS only for reliability)
+    // 8 sources d'actualités crypto conformes au cahier des charges
     const newsSources = [
-      { url: 'https://cointelegraph.com/rss', name: 'Cointelegraph' },
-      { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', name: 'CoinDesk' },
-      { url: 'https://cryptoast.fr/feed/', name: 'Cryptoast' },
+      { url: 'https://coinmarketcap.com/headlines/rss/', name: 'CoinMarketCap' },
+      { url: 'https://www.binance.com/en/feed/market', name: 'Binance Markets' },
       { url: 'https://journalducoin.com/feed/', name: 'Journal du Coin' },
-      { url: 'https://cryptonews.com/news/feed/', name: 'CryptoNews' },
-      { url: 'https://bitcoinmagazine.com/feed', name: 'Bitcoin Magazine' },
-      { url: 'https://decrypt.co/feed', name: 'Decrypt' },
-      { url: 'https://www.theblockcrypto.com/rss.xml', name: 'The Block' }
+      { url: 'https://www.zonebourse.com/RSS/actualite-bourse/', name: 'Zonebourse' },
+      { url: 'https://www.investing.com/rss/news_301.rss', name: 'Investing.com Crypto' },
+      { url: 'https://cryptoast.fr/feed/', name: 'Cryptoast' },
+      { url: 'https://www.tradingview.com/feed/', name: 'TradingView' },
+      { url: 'https://finance.yahoo.com/news/rss/cryptocurrency', name: 'Yahoo Finance' }
     ];
 
     // Fetch from all sources in parallel

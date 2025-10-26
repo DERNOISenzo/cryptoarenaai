@@ -15,11 +15,13 @@ import {
   Sparkles,
   Newspaper,
   Twitter,
-  Info
+  Info,
+  BookOpen
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AlertsManager from "@/components/AlertsManager";
 import TradingBotAI from "./TradingBotAI";
+import TradeJournal from "./TradeJournal";
 import Header from "./Header";
 import {
   Tooltip,
@@ -50,6 +52,11 @@ interface Analysis {
   takeProfit: number;
   stopLoss: number;
   riskReward: number;
+  timeHorizon?: {
+    estimate: string;
+    type: string;
+    hours: number;
+  };
 }
 
 const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps) => {
@@ -58,6 +65,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
   const [news, setNews] = useState<any[]>([]);
   const [tweets, setTweets] = useState<any[]>([]);
   const [userId, setUserId] = useState<string>("");
+  const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -119,6 +127,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
         takeProfit: analysisData.analysis.takeProfit,
         stopLoss: analysisData.analysis.stopLoss,
         riskReward: analysisData.analysis.riskReward,
+        timeHorizon: analysisData.analysis.timeHorizon,
       };
       
       setAnalysis(transformedAnalysis);
@@ -253,7 +262,7 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div className="grid grid-cols-3 gap-4 pt-2">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-xs text-muted-foreground">Levier suggéré</p>
@@ -286,6 +295,25 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
                       </div>
                       <p className="text-2xl font-bold">1:{analysis.riskReward.toFixed(1)}</p>
                     </div>
+                    {analysis.timeHorizon && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-xs text-muted-foreground">Horizon</p>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Info className="w-3 h-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="max-w-xs">Durée estimée pour atteindre le Take Profit, calculée selon l'ATR et la distance du TP.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xl font-bold">{analysis.timeHorizon.estimate}</p>
+                        <p className="text-xs text-muted-foreground uppercase">{analysis.timeHorizon.type}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -431,6 +459,40 @@ const TradingDashboard = ({ crypto, cryptoName, onBack }: TradingDashboardProps)
           symbol={crypto} 
           cryptoName={cryptoName}
           currentPrice={analysis.price} 
+        />
+
+        {/* Trade Journal Integration */}
+        <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/30">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold">Journal de Trading</h3>
+              <p className="text-sm text-muted-foreground">
+                Enregistrez vos trades pour améliorer vos performances avec le moteur d'apprentissage
+              </p>
+            </div>
+            <Button 
+              onClick={() => setTradeJournalOpen(true)}
+              className="gap-2"
+              size="lg"
+            >
+              <BookOpen className="w-4 h-4" />
+              Enregistrer ce Trade
+            </Button>
+          </div>
+        </Card>
+
+        <TradeJournal
+          open={tradeJournalOpen}
+          onOpenChange={setTradeJournalOpen}
+          analysisData={{
+            symbol: crypto,
+            cryptoName: cryptoName,
+            signal: analysis.signal,
+            entryPrice: analysis.price,
+            takeProfit: analysis.takeProfit,
+            stopLoss: analysis.stopLoss,
+            leverage: analysis.leverage
+          }}
         />
 
         {/* News Section */}
