@@ -74,34 +74,6 @@ const Index = () => {
       <div className="min-h-screen bg-background">
         {session && <Header userId={session.user.id} />}
         <div className="p-4">
-          <div className="max-w-6xl mx-auto mb-4">
-            <Card className="p-4">
-              <label className="text-sm font-medium mb-2 block">Type de Trade:</label>
-              <div className="flex gap-2">
-                <Button
-                  variant={tradeType === 'scalp' ? 'default' : 'outline'}
-                  onClick={() => setTradeType('scalp')}
-                  size="sm"
-                >
-                  🎯 Scalp (Court terme)
-                </Button>
-                <Button
-                  variant={tradeType === 'swing' ? 'default' : 'outline'}
-                  onClick={() => setTradeType('swing')}
-                  size="sm"
-                >
-                  📊 Swing (Moyen terme)
-                </Button>
-                <Button
-                  variant={tradeType === 'long' ? 'default' : 'outline'}
-                  onClick={() => setTradeType('long')}
-                  size="sm"
-                >
-                  💎 Long Terme
-                </Button>
-              </div>
-            </Card>
-          </div>
           <CryptoSearch onSelect={handleSelect} onBack={() => setStarted(false)} />
         </div>
       </div>
