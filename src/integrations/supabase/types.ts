@@ -196,6 +196,7 @@ export type Database = {
           max_loss_per_day: number
           preferred_trade_style: string
           risk_percent_per_trade: number
+          target_win_rate: number | null
           updated_at: string
           user_id: string
         }
@@ -209,6 +210,7 @@ export type Database = {
           max_loss_per_day?: number
           preferred_trade_style?: string
           risk_percent_per_trade?: number
+          target_win_rate?: number | null
           updated_at?: string
           user_id: string
         }
@@ -222,6 +224,7 @@ export type Database = {
           max_loss_per_day?: number
           preferred_trade_style?: string
           risk_percent_per_trade?: number
+          target_win_rate?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -234,6 +237,7 @@ export type Database = {
     Functions: {
       reset_daily_loss: { Args: never; Returns: undefined }
       run_learning_engine: { Args: never; Returns: undefined }
+      trigger_learning_engine: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

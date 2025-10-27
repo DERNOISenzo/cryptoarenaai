@@ -25,6 +25,7 @@ const UserSettings = ({ userId }: UserSettingsProps) => {
   const [currentLossToday, setCurrentLossToday] = useState(0);
   const [tradeStyle, setTradeStyle] = useState("swing");
   const [exitStrategy, setExitStrategy] = useState("partial");
+  const [targetWinRate, setTargetWinRate] = useState("60");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -49,6 +50,7 @@ const UserSettings = ({ userId }: UserSettingsProps) => {
         setCurrentLossToday(parseFloat(data.current_loss_today.toString()));
         setTradeStyle(data.preferred_trade_style);
         setExitStrategy(data.exit_strategy);
+        setTargetWinRate(data.target_win_rate?.toString() || "60");
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -67,6 +69,7 @@ const UserSettings = ({ userId }: UserSettingsProps) => {
           max_loss_per_day: parseFloat(maxLossPerDay),
           preferred_trade_style: tradeStyle,
           exit_strategy: exitStrategy,
+          target_win_rate: parseFloat(targetWinRate),
         });
 
       if (error) throw error;
@@ -147,6 +150,22 @@ const UserSettings = ({ userId }: UserSettingsProps) => {
                 min="10"
                 step="10"
               />
+            </div>
+            
+            <div>
+              <Label htmlFor="targetWinRate">Win Rate Cible (%)</Label>
+              <Input
+                id="targetWinRate"
+                type="number"
+                value={targetWinRate}
+                onChange={(e) => setTargetWinRate(e.target.value)}
+                min="30"
+                max="100"
+                step="5"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Objectif de réussite: 60-70% recommandé
+              </p>
             </div>
           </div>
         </div>

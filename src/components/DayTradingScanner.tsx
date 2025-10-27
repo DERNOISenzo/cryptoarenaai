@@ -8,20 +8,23 @@ import { Badge } from "@/components/ui/badge";
 
 interface IntradaySignal {
   symbol: string;
-  cryptoName: string;
+  name: string;
+  timeframe: string;
   signal: 'LONG' | 'SHORT';
-  confidence: number;
-  currentPrice: number;
-  entryPrice: number;
+  entry: number;
+  stopLoss: number;
   takeProfit1: number;
   takeProfit2: number;
   takeProfit3: number;
-  stopLoss: number;
-  leverage: number;
-  timeframe: string;
-  patterns: string[];
+  confidence: number;
+  microPattern: string;
+  vwap?: number;
+  supertrend?: number;
+  supertrendDirection?: 'BULLISH' | 'BEARISH';
+  orderBookImbalance: number;
   volumeSpike: boolean;
-  orderBookImbalance: string;
+  momentum: number;
+  expectedDuration: string;
 }
 
 const DayTradingScanner = () => {
@@ -33,31 +36,19 @@ const DayTradingScanner = () => {
   const scanMarket = async () => {
     setLoading(true);
     try {
-      const topCoins = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
-      
-      const results = await Promise.all(
-        topCoins.map(async (symbol) => {
-          try {
-            const { data, error } = await supabase.functions.invoke('intraday-scanner', {
-              body: { symbol, timeframe }
-            });
-
-            if (error) throw error;
-            return data;
-          } catch (error) {
-            console.error(`Error scanning ${symbol}:`, error);
-            return null;
-          }
-        })
-      );
-
-      const validSignals = results.filter(r => r !== null && r.signal !== 'NEUTRAL');
-      setSignals(validSignals);
-
-      toast({
-        title: "✅ Scan terminé",
-        description: `${validSignals.length} opportunités trouvées`
+      const { data, error } = await supabase.functions.invoke('intraday-scanner-vwap', {
+        body: { timeframe, limit: 20 }
       });
+
+      if (error) throw error;
+      
+      if (data && data.signals) {
+        setSignals(data.signals);
+        toast({
+          title: "✅ Scan terminé",
+          description: `${data.signals.length} opportunités trouvées avec VWAP et Supertrend`
+        });
+      }
     } catch (error) {
       console.error('Scan error:', error);
       toast({
@@ -95,8 +86,9 @@ const DayTradingScanner = () => {
         </div>
 
         <div className="text-sm text-muted-foreground mb-4">
-          <p>⚡ Scanner ultra-rapide pour détecter les opportunités intraday</p>
+          <p>⚡ Scanner ultra-rapide avec VWAP et Supertrend</p>
           <p>📊 Analyse du carnet d'ordres, micro-patterns et volume</p>
+          <p className="text-xs mt-1">🎯 Nouveauté: Détection VWAP Bounce et VWAP Breakout</p>
         </div>
       </Card>
 
@@ -107,7 +99,7 @@ const DayTradingScanner = () => {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Crypto</p>
-                  <p className="font-bold text-lg">{signal.cryptoName}</p>
+                  <p className="font-bold text-lg">{signal.name}</p>
                   <p className="text-xs text-muted-foreground">{signal.symbol}</p>
                 </div>
 
@@ -127,38 +119,43 @@ const DayTradingScanner = () => {
                     <Badge variant={signal.confidence > 75 ? "default" : "secondary"}>
                       {signal.confidence}% confiance
                     </Badge>
-                    <Badge variant="outline">{signal.leverage}x</Badge>
+                    {signal.supertrendDirection && (
+                      <Badge variant={signal.supertrendDirection === 'BULLISH' ? 'default' : 'destructive'}>
+                        ST: {signal.supertrendDirection}
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
                 <div>
                   <p className="text-sm text-muted-foreground">Prix & Targets</p>
-                  <p className="text-sm">Entry: <span className="font-semibold">${signal.entryPrice.toFixed(2)}</span></p>
+                  <p className="text-sm">Entry: <span className="font-semibold">${signal.entry.toFixed(4)}</span></p>
+                  {signal.vwap && (
+                    <p className="text-xs text-muted-foreground">VWAP: ${signal.vwap.toFixed(4)}</p>
+                  )}
                   <div className="flex items-center gap-2 text-xs mt-1">
                     <Target className="w-3 h-3 text-success" />
-                    <span>TP1: ${signal.takeProfit1.toFixed(2)}</span>
+                    <span>TP1: ${signal.takeProfit1.toFixed(4)}</span>
                   </div>
-                  <p className="text-xs text-danger">SL: ${signal.stopLoss.toFixed(2)}</p>
+                  <p className="text-xs text-danger">SL: ${signal.stopLoss.toFixed(4)}</p>
                 </div>
 
                 <div>
                   <p className="text-sm text-muted-foreground">Détails</p>
                   <div className="flex items-center gap-1 text-xs">
                     <Clock className="w-3 h-3" />
-                    <span>{signal.timeframe}</span>
+                    <span>{signal.expectedDuration}</span>
                   </div>
                   {signal.volumeSpike && (
                     <Badge variant="secondary" className="mt-1">
                       📈 Volume Spike
                     </Badge>
                   )}
-                  {signal.patterns.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {signal.patterns.join(', ')}
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Pattern: {signal.microPattern}
+                  </p>
                   <p className="text-xs mt-1">
-                    Carnet: <span className="font-semibold">{signal.orderBookImbalance}</span>
+                    Carnet: <span className="font-semibold">{signal.orderBookImbalance}%</span>
                   </p>
                 </div>
               </div>

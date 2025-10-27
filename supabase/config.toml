@@ -10,4 +10,6 @@ verify_jwt = false
 
 [functions.intraday-scanner]
 
+[functions.intraday-scanner-vwap]
+
 [functions.fundamental-analysis]
