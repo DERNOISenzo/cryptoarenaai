@@ -98,6 +98,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
   const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>(initialTradeType);
   const [targetDuration, setTargetDuration] = useState<number>(0);
+  const [capitalPercent, setCapitalPercent] = useState<number>(100);
   const [userPreferences, setUserPreferences] = useState<{style: 'scalp' | 'swing' | 'long', loaded: boolean}>({style: 'swing', loaded: false});
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -183,7 +184,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
     
     try {
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('crypto-analysis', {
-        body: { symbol: crypto, tradeType, targetDuration }
+        body: { symbol: crypto, tradeType, targetDuration, capitalPercent }
       });
 
       if (analysisError) throw analysisError;
@@ -313,6 +314,22 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                         size="sm"
                       >
                         {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">% du Capital:</span>
+                  <div className="flex gap-2 flex-wrap">
+                    {[25, 50, 75, 100].map((percent) => (
+                      <Button
+                        key={percent}
+                        variant={capitalPercent === percent ? 'default' : 'outline'}
+                        onClick={() => setCapitalPercent(percent)}
+                        size="sm"
+                      >
+                        {percent}%
                       </Button>
                     ))}
                   </div>
@@ -582,12 +599,15 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
           </Card>
           
           <div className="grid md:grid-cols-4 gap-4">
-            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-muted-foreground">RSI (14)</span>
+            <Card className="p-6 bg-gradient-to-br from-primary/10 via-card to-accent/10 hover:shadow-xl hover:scale-105 transition-all duration-300 border-2 border-primary/20">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-bold text-foreground uppercase tracking-wider">RSI (14)</span>
+                  </div>
                   <Badge 
-                    className="text-base px-3 py-1"
+                    className="text-lg px-4 py-1.5 font-bold shadow-lg"
                     variant={
                       analysis.indicators.rsi < 30 ? "default" : 
                       analysis.indicators.rsi > 70 ? "destructive" : "secondary"
@@ -596,42 +616,48 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                     {analysis.indicators.rsi.toFixed(1)}
                   </Badge>
                 </div>
-                <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                <div className="w-full h-4 bg-muted rounded-full overflow-hidden shadow-inner">
                   <div 
-                    className={`h-full transition-all ${
-                      analysis.indicators.rsi < 30 ? "bg-success" :
-                      analysis.indicators.rsi > 70 ? "bg-danger" : "bg-warning"
+                    className={`h-full transition-all duration-500 ${
+                      analysis.indicators.rsi < 30 ? "bg-gradient-to-r from-success to-success/70" :
+                      analysis.indicators.rsi > 70 ? "bg-gradient-to-r from-danger to-danger/70" : "bg-gradient-to-r from-warning to-warning/70"
                     }`}
                     style={{ width: `${analysis.indicators.rsi}%` }}
                   />
                 </div>
-                <p className="text-sm font-medium">
-                  {analysis.indicators.rsi < 30 ? "Survendu ✅" : 
-                   analysis.indicators.rsi > 70 ? "Suracheté ⚠️" : "Neutre"}
+                <p className="text-base font-bold text-center">
+                  {analysis.indicators.rsi < 30 ? "🟢 Survendu" : 
+                   analysis.indicators.rsi > 70 ? "🔴 Suracheté" : "🟡 Neutre"}
                 </p>
               </div>
             </Card>
 
-            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
-              <div className="space-y-3">
-                <span className="text-sm font-medium text-muted-foreground">MACD</span>
+            <Card className="p-6 bg-gradient-to-br from-primary/10 via-card to-accent/10 hover:shadow-xl hover:scale-105 transition-all duration-300 border-2 border-primary/20">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-bold text-foreground uppercase tracking-wider">MACD</span>
+                </div>
                 <Badge 
-                  className="text-base px-3 py-1"
+                  className="text-lg px-4 py-2 font-bold w-full justify-center shadow-lg"
                   variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}
                 >
                   {analysis.indicators.macd}
                 </Badge>
-                <p className="text-sm font-medium">
-                  Momentum {analysis.indicators.macd === "Haussier" ? "↑ Haussier" : "↓ Baissier"}
+                <p className="text-base font-bold text-center mt-3">
+                  {analysis.indicators.macd === "Haussier" ? "📈 Momentum Positif" : "📉 Momentum Négatif"}
                 </p>
               </div>
             </Card>
 
-            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
-              <div className="space-y-3">
-                <span className="text-sm font-medium text-muted-foreground">Bollinger Bands</span>
+            <Card className="p-6 bg-gradient-to-br from-primary/10 via-card to-accent/10 hover:shadow-xl hover:scale-105 transition-all duration-300 border-2 border-primary/20">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-bold text-foreground uppercase tracking-wider">Bollinger</span>
+                </div>
                 <Badge 
-                  className="text-base px-3 py-1"
+                  className="text-lg px-4 py-2 font-bold w-full justify-center shadow-lg"
                   variant={
                     analysis.indicators.bb === "Survente" ? "default" : 
                     analysis.indicators.bb === "Surachat" ? "destructive" : "secondary"
@@ -639,20 +665,25 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                 >
                   {analysis.indicators.bb}
                 </Badge>
-                <p className="text-sm font-medium">
-                  {analysis.indicators.bb === "Survente" ? "Zone d'achat ✅" : 
-                   analysis.indicators.bb === "Surachat" ? "Zone de vente ⚠️" : "Zone neutre"}
+                <p className="text-base font-bold text-center mt-3">
+                  {analysis.indicators.bb === "Survente" ? "🟢 Zone d'Achat" : 
+                   analysis.indicators.bb === "Surachat" ? "🔴 Zone de Vente" : "🟡 Zone Neutre"}
                 </p>
               </div>
             </Card>
 
-            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
-              <div className="space-y-3">
-                <span className="text-sm font-medium text-muted-foreground">ATR (Volatilité)</span>
-                <p className="text-3xl font-bold">${analysis.indicators.atr.toFixed(2)}</p>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Volatilité moyenne sur 14 périodes
-                </p>
+            <Card className="p-6 bg-gradient-to-br from-primary/10 via-card to-accent/10 hover:shadow-xl hover:scale-105 transition-all duration-300 border-2 border-primary/20">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-bold text-foreground uppercase tracking-wider">Volatilité</span>
+                </div>
+                <div className="text-center">
+                  <p className="text-4xl font-black text-primary">${analysis.indicators.atr.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground mt-2 font-semibold uppercase">
+                    ATR (14 périodes)
+                  </p>
+                </div>
               </div>
             </Card>
           </div>
@@ -674,13 +705,17 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
           {/* Alertes Prix - Full Width */}
           <AlertsManager symbol={crypto} cryptoName={cryptoName} currentPrice={analysis.price} />
           
-          {/* Enregistrer le Trade - Full Width avec fond vert */}
+          {/* Enregistrer le Trade - Full Width avec fond vert foncé transparent */}
           <Button 
             onClick={() => setTradeJournalOpen(true)} 
             size="lg"
-            className="w-full gap-2 bg-success hover:bg-success/90 text-white font-bold text-lg py-6"
+            className="w-full gap-3 bg-success/80 hover:bg-success/90 text-white font-bold text-lg py-8 shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-success/50"
+            style={{
+              background: 'linear-gradient(135deg, hsl(var(--success) / 0.8), hsl(var(--success) / 0.6))',
+              backdropFilter: 'blur(10px)'
+            }}
           >
-            <BookOpen className="w-5 h-5" />
+            <BookOpen className="w-6 h-6" />
             Enregistrer le Trade
           </Button>
 
@@ -710,20 +745,15 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                       </div>
                       {item.sentiment && (
                         <Badge 
-                          className="font-semibold"
-                          variant={
-                            item.sentiment.toLowerCase().includes('très positif') || item.sentiment.toLowerCase().includes('very positive') ? 'default' :
-                            item.sentiment.toLowerCase().includes('positif') || item.sentiment.toLowerCase().includes('positive') ? 'default' : 
-                            item.sentiment.toLowerCase().includes('très négatif') || item.sentiment.toLowerCase().includes('very negative') ? 'destructive' :
-                            item.sentiment.toLowerCase().includes('négatif') || item.sentiment.toLowerCase().includes('negative') ? 'destructive' : 
-                            'secondary'
-                          }
+                          className="font-bold px-3 py-1.5 text-white shadow-md"
                           style={{
-                            backgroundColor: item.sentiment.toLowerCase().includes('très positif') || item.sentiment.toLowerCase().includes('very positive') ? 'hsl(var(--success))' :
-                              item.sentiment.toLowerCase().includes('positif') || item.sentiment.toLowerCase().includes('positive') ? 'hsl(var(--primary))' :
-                              item.sentiment.toLowerCase().includes('très négatif') || item.sentiment.toLowerCase().includes('very negative') ? 'hsl(var(--danger))' :
-                              item.sentiment.toLowerCase().includes('négatif') || item.sentiment.toLowerCase().includes('negative') ? 'hsl(var(--destructive))' :
-                              undefined
+                            backgroundColor: 
+                              item.sentiment.toLowerCase().includes('très positif') || item.sentiment.toLowerCase().includes('very positive') ? '#10b981' :
+                              item.sentiment.toLowerCase().includes('positif') || item.sentiment.toLowerCase().includes('positive') ? '#22c55e' :
+                              item.sentiment.toLowerCase().includes('très négatif') || item.sentiment.toLowerCase().includes('very negative') ? '#dc2626' :
+                              item.sentiment.toLowerCase().includes('négatif') || item.sentiment.toLowerCase().includes('negative') ? '#ef4444' :
+                              item.sentiment.toLowerCase().includes('neutre') || item.sentiment.toLowerCase().includes('neutral') ? '#64748b' :
+                              '#94a3b8'
                           }}
                         >
                           {item.sentiment}

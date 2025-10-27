@@ -331,7 +331,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, tradeType = 'swing', targetDuration = 0 } = await req.json();
+    const { symbol, tradeType = 'swing', targetDuration = 0, capitalPercent = 100 } = await req.json();
     
     if (!symbol) {
       throw new Error('Symbol is required');
@@ -689,6 +689,11 @@ serve(async (req) => {
         console.log('Could not fetch user settings, using defaults:', e);
       }
     }
+    
+    // Apply capital percentage - user wants to use only X% of their capital
+    const effectiveCapital = userCapital * (capitalPercent / 100);
+    console.log(`💰 Capital effectif: $${effectiveCapital.toFixed(2)} (${capitalPercent}% de $${userCapital.toFixed(2)})`);
+    userCapital = effectiveCapital;
 
     // Mettre à jour macdIsBullish et macdIsBearish
     macdIsBullish = macdHist > 0;
@@ -746,21 +751,32 @@ serve(async (req) => {
       suggestedLeverage = Math.min(baseLeverage * 0.7, userParams.max_leverage, 7);
     }
     
-    // AJUSTEMENT SELON LE CAPITAL ET LE RISQUE: Si le capital est faible, réduire le levier
-    const capitalFactor = userCapital < 1000 ? 0.5 : 
-                          userCapital < 5000 ? 0.7 : 
-                          userCapital < 10000 ? 0.85 : 1.0;
-    suggestedLeverage *= capitalFactor;
+    // AJUSTEMENT AVANCÉ SELON LE CAPITAL ET LE RISQUE
+    // Moins de capital utilisé = plus de prudence (levier réduit)
+    const capitalFactor = capitalPercent <= 25 ? 0.6 :   // 25% du capital = très prudent
+                          capitalPercent <= 50 ? 0.8 :    // 50% = modéré
+                          capitalPercent <= 75 ? 0.95 :   // 75% = confiant
+                          1.0;                             // 100% = très confiant
     
-    // AJUSTEMENT SELON LE RISQUE PAR TRADE: Si le risque est élevé, réduire le levier
-    const riskFactor = userRiskPercent > 3 ? 0.6 : 
-                       userRiskPercent > 2 ? 0.8 : 1.0;
-    suggestedLeverage *= riskFactor;
+    // Si le capital effectif est faible, réduire encore plus
+    const absoluteCapitalFactor = userCapital < 500 ? 0.5 :
+                                  userCapital < 1000 ? 0.6 :
+                                  userCapital < 2500 ? 0.75 :
+                                  userCapital < 5000 ? 0.85 : 1.0;
     
-    // Ensure minimum leverage of 1
-    suggestedLeverage = Math.max(1, Math.round(suggestedLeverage));
+    // AJUSTEMENT SELON LE RISQUE PAR TRADE: Plus de risque = moins de levier
+    const riskFactor = userRiskPercent > 5 ? 0.4 :      // Très risqué
+                       userRiskPercent > 3 ? 0.6 :      // Risqué
+                       userRiskPercent > 2 ? 0.8 :      // Modéré-élevé
+                       userRiskPercent > 1 ? 0.9 : 1.0; // Normal
     
-    console.log(`💰 Calcul levier: Base=${baseLeverage}x, Capital factor=${capitalFactor.toFixed(2)}, Risk factor=${riskFactor.toFixed(2)}, Final=${suggestedLeverage}x`);
+    // Combine tous les facteurs
+    suggestedLeverage *= capitalFactor * absoluteCapitalFactor * riskFactor;
+    
+    // Ensure minimum leverage of 1, maximum selon user settings
+    suggestedLeverage = Math.max(1, Math.min(Math.round(suggestedLeverage), userParams.max_leverage));
+    
+    console.log(`💰 Levier: Base=${baseLeverage}x, CapitalPercent=${capitalPercent}% (factor=${capitalFactor.toFixed(2)}), AbsCapital=${userCapital.toFixed(2)} (factor=${absoluteCapitalFactor.toFixed(2)}), Risk=${userRiskPercent}% (factor=${riskFactor.toFixed(2)}), Final=${suggestedLeverage}x`);
 
     // Fetch 24h ticker
     const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
