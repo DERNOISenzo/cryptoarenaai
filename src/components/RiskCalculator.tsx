@@ -37,9 +37,47 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
   });
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [userSettings, setUserSettings] = useState<any>(null);
   const { toast } = useToast();
 
+  // Load user settings on mount
+  useState(() => {
+    const loadUserSettings = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data, error } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (!error && data) {
+          setUserSettings(data);
+          setFormData(prev => ({
+            ...prev,
+            capital: data.capital.toString(),
+            riskPercent: data.risk_percent_per_trade.toString()
+          }));
+        }
+      }
+    };
+    loadUserSettings();
+  });
+
+  // Check if user can trade (not exceeded max loss)
+  const canTrade = !userSettings || 
+    parseFloat(userSettings.current_loss_today) < parseFloat(userSettings.max_loss_per_day);
+
   const calculateRisk = async () => {
+    if (!canTrade) {
+      toast({
+        title: "⛔ Trading bloqué",
+        description: `Vous avez atteint votre limite de perte quotidienne (${userSettings.max_loss_per_day}$)`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!formData.entryPrice || !formData.stopLoss || !formData.capital || !formData.riskPercent) {
       toast({
         title: "⚠️ Champs manquants",
@@ -88,6 +126,23 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
           <DialogDescription>
             Calculez votre exposition et votre ratio risque/récompense
           </DialogDescription>
+          
+          {userSettings && (
+            <div className="mt-2 p-3 rounded-lg bg-secondary/50">
+              <div className="flex items-center justify-between text-sm">
+                <span>💰 Capital: ${userSettings.capital}</span>
+                <span>📊 Risque/Trade: {userSettings.risk_percent_per_trade}%</span>
+                <span className={parseFloat(userSettings.current_loss_today) > 0 ? 'text-warning' : 'text-success'}>
+                  📉 Perte aujourd'hui: ${parseFloat(userSettings.current_loss_today).toFixed(2)} / ${userSettings.max_loss_per_day}
+                </span>
+              </div>
+              {!canTrade && (
+                <div className="mt-2 p-2 bg-destructive/20 rounded text-destructive text-sm font-semibold">
+                  ⛔ Trading bloqué - Limite de perte quotidienne atteinte
+                </div>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">

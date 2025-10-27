@@ -185,11 +185,54 @@ export type Database = {
         }
         Relationships: []
       }
+      user_settings: {
+        Row: {
+          capital: number
+          created_at: string
+          current_loss_today: number
+          exit_strategy: string
+          id: string
+          last_loss_reset: string
+          max_loss_per_day: number
+          preferred_trade_style: string
+          risk_percent_per_trade: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          capital?: number
+          created_at?: string
+          current_loss_today?: number
+          exit_strategy?: string
+          id?: string
+          last_loss_reset?: string
+          max_loss_per_day?: number
+          preferred_trade_style?: string
+          risk_percent_per_trade?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          capital?: number
+          created_at?: string
+          current_loss_today?: number
+          exit_strategy?: string
+          id?: string
+          last_loss_reset?: string
+          max_loss_per_day?: number
+          preferred_trade_style?: string
+          risk_percent_per_trade?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      reset_daily_loss: { Args: never; Returns: undefined }
       run_learning_engine: { Args: never; Returns: undefined }
     }
     Enums: {
