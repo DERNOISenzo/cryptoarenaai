@@ -16,13 +16,13 @@ import {
   Newspaper,
   Twitter,
   Info,
-  BookOpen
+  BookOpen,
+  DollarSign
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AlertsManager from "@/components/AlertsManager";
 import TradingBotAI from "./TradingBotAI";
 import TradeJournal from "./TradeJournal";
-import Header from "./Header";
 import {
   Tooltip,
   TooltipContent,
@@ -34,12 +34,12 @@ interface TradingDashboardProps {
   crypto: string;
   cryptoName: string;
   tradeType?: 'scalp' | 'swing' | 'long';
-  targetDuration?: number; // in minutes
+  targetDuration?: number;
   onBack: () => void;
 }
 
 interface Analysis {
-  signal: "LONG" | "SHORT" | "NEUTRAL";
+  signal: "LONG" | "SHORT";
   confidence: number;
   leverage: number;
   price: number;
@@ -63,6 +63,30 @@ interface Analysis {
     hours: number;
     confidence: number;
   };
+  positionSizing?: {
+    capital: number;
+    riskPercent: number;
+    positionSize: number;
+    margin: number;
+    riskAmount: number;
+    tp1Profit: number;
+    tp2Profit: number;
+    tp3Profit: number;
+    exitPlan?: {
+      tp1: { percent: number; profit: number; action: string };
+      tp2: { percent: number; profit: number; action: string };
+      tp3: { percent: number; profit: number; action: string };
+    };
+    dailyRiskStatus?: {
+      currentLoss: number;
+      maxLoss: number;
+      remaining: number;
+      tradeRisk: number;
+      afterThisTrade: number;
+      status: string;
+    };
+    note: string;
+  };
 }
 
 const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 'swing', onBack }: TradingDashboardProps) => {
@@ -73,11 +97,10 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const [userId, setUserId] = useState<string>("");
   const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
   const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>(initialTradeType);
-  const [targetDuration, setTargetDuration] = useState<number>(0); // in minutes
+  const [targetDuration, setTargetDuration] = useState<number>(0);
   const { toast } = useToast();
   const navigate = useNavigate();
   
-  // Duration options based on trade type
   const getDurationOptions = () => {
     switch (tradeType) {
       case 'scalp':
@@ -106,7 +129,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
     }
   };
   
-  // Reset target duration when trade type changes
   useEffect(() => {
     const options = getDurationOptions();
     if (options.length > 0) {
@@ -136,14 +158,12 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
     setLoading(true);
     
     try {
-      // Load analysis from edge function
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('crypto-analysis', {
         body: { symbol: crypto, tradeType, targetDuration }
       });
 
       if (analysisError) throw analysisError;
 
-      // Load news from edge function
       const baseAsset = crypto.replace('USDT', '').replace('USDC', '').replace('BTC', '').replace('ETH', '');
       const { data: newsData, error: newsError } = await supabase.functions.invoke('crypto-news', {
         body: { symbol: crypto, baseAsset }
@@ -156,7 +176,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
         setTweets(newsData?.tweets || []);
       }
 
-      // Transform the data to match our interface
       const transformedAnalysis: Analysis = {
         signal: analysisData.analysis.signal,
         confidence: analysisData.analysis.confidence,
@@ -178,6 +197,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
         stopLoss: analysisData.analysis.stopLoss,
         riskReward: analysisData.analysis.riskReward,
         timeHorizon: analysisData.analysis.timeHorizon,
+        positionSizing: analysisData.analysis.positionSizing
       };
       
       setAnalysis(transformedAnalysis);
@@ -185,17 +205,17 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
       
       toast({
         title: "✅ Analyse terminée",
-        description: `${crypto} analysé avec des données réelles`,
+        description: `${crypto} analysé avec données réelles`,
         duration: 3000
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Analysis error:', error);
       setLoading(false);
       toast({
         title: "❌ Erreur",
-        description: "Impossible de charger l'analyse",
+        description: error.message || "Impossible de charger l'analyse",
         variant: "destructive",
-        duration: 3000
+        duration: 5000
       });
     }
   };
@@ -217,22 +237,18 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   if (!analysis) return null;
 
   const isLong = analysis.signal === "LONG";
-  const isShort = analysis.signal === "SHORT";
-  const signalColor = isLong ? "success" : isShort ? "danger" : "muted";
+  const signalColor = isLong ? "success" : "danger";
 
   return (
     <div className="min-h-screen bg-background">
-      {userId && <Header userId={userId} />}
       <div className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">
             <Button variant="outline" onClick={onBack} className="gap-2">
               <ArrowLeft className="w-4 h-4" />
               Retour
             </Button>
             
-            {/* Trade Type Selector */}
             <Card className="p-3">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3">
@@ -262,10 +278,9 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                   </div>
                 </div>
                 
-                {/* Duration Selector */}
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">Durée du Trade:</span>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {getDurationOptions().map((option) => (
                       <Button
                         key={option.value}
@@ -287,7 +302,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
             </Button>
           </div>
 
-        {/* Main Signal Card */}
         <Card className="p-8 border-2 border-primary/50 bg-gradient-to-br from-card to-secondary/50 shadow-2xl">
           <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-6">
@@ -304,23 +318,19 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full animate-pulse ${
-                    isLong ? "bg-success" : isShort ? "bg-danger" : "bg-muted"
+                    isLong ? "bg-success" : "bg-danger"
                   }`} style={{
                     boxShadow: isLong 
                       ? "0 0 20px hsl(var(--success))"
-                      : isShort 
-                      ? "0 0 20px hsl(var(--danger))"
-                      : "none"
+                      : "0 0 20px hsl(var(--danger))"
                   }} />
                   <span className="text-muted-foreground">Signal IA</span>
                 </div>
                 <div className="flex items-center gap-4">
                   {isLong ? (
                     <TrendingUp className="w-12 h-12 text-success" />
-                  ) : isShort ? (
-                    <TrendingDown className="w-12 h-12 text-danger" />
                   ) : (
-                    <Activity className="w-12 h-12 text-muted" />
+                    <TrendingDown className="w-12 h-12 text-danger" />
                   )}
                   <div>
                     <h2 className={`text-4xl font-bold text-${signalColor}`}>
@@ -346,7 +356,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                               <Info className="w-3 h-3 text-muted-foreground" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p className="max-w-xs">Pourcentage de concordance entre les multiples indicateurs techniques analysés. Plus de 60% = forte conviction du signal.</p>
+                              <p className="max-w-xs">Concordance entre les indicateurs techniques, analyse fondamentale et sentiment. Ajusté selon les incohérences détectées.</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -372,7 +382,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                               <Info className="w-3 h-3 text-muted-foreground" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p className="max-w-xs">Levier calculé selon la volatilité ATR et la force de la tendance. Volatilité faible + tendance forte = levier plus élevé acceptable.</p>
+                              <p className="max-w-xs">Calculé selon la durée cible, volatilité ATR et force de tendance.</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -382,16 +392,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-xs text-muted-foreground">Risk/Reward</p>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Info className="w-3 h-3 text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Ratio gain potentiel / perte potentielle. Un ratio de 1.7 signifie que vous pouvez gagner 1.7x plus que ce que vous risquez avec le Stop Loss.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
                       </div>
                       <p className="text-2xl font-bold">1:{analysis.riskReward.toFixed(1)}</p>
                     </div>
@@ -399,16 +399,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <p className="text-xs text-muted-foreground">Horizon</p>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Info className="w-3 h-3 text-muted-foreground" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="max-w-xs">Durée estimée pour atteindre le Take Profit, calculée selon l'ATR et la distance du TP.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
                         </div>
                         <p className="text-xl font-bold">{analysis.timeHorizon.estimate}</p>
                         <p className="text-xs text-muted-foreground uppercase">{analysis.timeHorizon.type}</p>
@@ -418,100 +408,142 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                 </div>
               </Card>
 
+              {/* Daily Risk Status */}
+              {analysis.positionSizing?.dailyRiskStatus && (
+                <Card className={`p-4 border-2 ${
+                  analysis.positionSizing.dailyRiskStatus.status === 'WARNING' 
+                    ? 'border-warning/50 bg-warning/10' 
+                    : 'border-success/30 bg-success/5'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className={`w-5 h-5 mt-0.5 ${
+                      analysis.positionSizing.dailyRiskStatus.status === 'WARNING' 
+                        ? 'text-warning' 
+                        : 'text-success'
+                    }`} />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-sm mb-2">État du Risque Journalier</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-muted-foreground">Perte actuelle</p>
+                          <p className="font-bold">${analysis.positionSizing.dailyRiskStatus.currentLoss.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Limite journalière</p>
+                          <p className="font-bold">${analysis.positionSizing.dailyRiskStatus.maxLoss.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Risque ce trade</p>
+                          <p className="font-bold text-warning">${analysis.positionSizing.dailyRiskStatus.tradeRisk.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Reste disponible</p>
+                          <p className="font-bold text-success">${analysis.positionSizing.dailyRiskStatus.remaining.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               <Card className="p-6 bg-secondary/30 border-border">
                 <div className="flex items-start gap-3">
                   <Target className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
                   <div className="space-y-3 text-sm flex-1">
-                    <h3 className="font-semibold text-base mb-2">Niveaux de Take Profit</h3>
+                    <h3 className="font-semibold text-base mb-2">Plan de Sortie avec Montants en $</h3>
                     
-                    {analysis.takeProfit1 && analysis.takeProfit2 && analysis.takeProfit3 ? (
+                    {analysis.takeProfit1 && analysis.takeProfit2 && analysis.takeProfit3 && analysis.positionSizing ? (
                       <>
-                        <div className="flex justify-between items-center p-2 bg-success/10 rounded border border-success/20">
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">TP1 (Conservateur):</span>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Info className="w-3 h-3 text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="max-w-xs">Premier objectif - Prenez 30-50% de vos profits ici pour sécuriser des gains rapides.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                        <div className="flex justify-between items-start p-3 bg-success/10 rounded border border-success/20">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold">TP1 (50%):</span>
+                              <span className="font-mono">${analysis.takeProfit1.toFixed(4)}</span>
+                            </div>
+                            {analysis.positionSizing.exitPlan && (
+                              <>
+                                <p className="text-success font-bold text-lg">
+                                  +${analysis.positionSizing.exitPlan.tp1.profit.toFixed(2)}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {analysis.positionSizing.exitPlan.tp1.action}
+                                </p>
+                              </>
+                            )}
                           </div>
-                          <span className="font-bold text-success">${analysis.takeProfit1.toFixed(2)}</span>
                         </div>
-                        
-                        <div className="flex justify-between items-center p-2 bg-success/10 rounded border border-success/30">
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">TP2 (Cible principale):</span>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Info className="w-3 h-3 text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="max-w-xs">Objectif principal - Prenez 40-50% de vos profits ici. Calculé avec ATR optimisé.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+
+                        <div className="flex justify-between items-start p-3 bg-success/10 rounded border border-success/20">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold">TP2 (30%):</span>
+                              <span className="font-mono">${analysis.takeProfit2.toFixed(4)}</span>
+                            </div>
+                            {analysis.positionSizing.exitPlan && (
+                              <>
+                                <p className="text-success font-bold text-lg">
+                                  +${analysis.positionSizing.exitPlan.tp2.profit.toFixed(2)}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {analysis.positionSizing.exitPlan.tp2.action}
+                                </p>
+                              </>
+                            )}
                           </div>
-                          <span className="font-bold text-success">${analysis.takeProfit2.toFixed(2)}</span>
                         </div>
-                        
-                        <div className="flex justify-between items-center p-2 bg-success/10 rounded border border-success/40">
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">TP3 (Étendu):</span>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Info className="w-3 h-3 text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="max-w-xs">Objectif ambitieux - Laissez courir 10-20% de votre position pour maximiser les gains en cas de forte tendance.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+
+                        <div className="flex justify-between items-start p-3 bg-success/10 rounded border border-success/20">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold">TP3 (20%):</span>
+                              <span className="font-mono">${analysis.takeProfit3.toFixed(4)}</span>
+                            </div>
+                            {analysis.positionSizing.exitPlan && (
+                              <>
+                                <p className="text-success font-bold text-lg">
+                                  +${analysis.positionSizing.exitPlan.tp3.profit.toFixed(2)}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {analysis.positionSizing.exitPlan.tp3.action}
+                                </p>
+                              </>
+                            )}
                           </div>
-                          <span className="font-bold text-success">${analysis.takeProfit3.toFixed(2)}</span>
                         </div>
+
+                        <div className="flex justify-between items-center p-3 bg-danger/10 rounded border border-danger/20">
+                          <span className="font-semibold">Stop Loss:</span>
+                          <div className="text-right">
+                            <span className="font-mono">${analysis.stopLoss.toFixed(4)}</span>
+                            {analysis.positionSizing && (
+                              <p className="text-danger font-bold">
+                                -${analysis.positionSizing.riskAmount.toFixed(2)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {analysis.positionSizing && (
+                          <div className="p-3 bg-primary/10 rounded border border-primary/20 mt-4">
+                            <div className="flex items-start gap-2 mb-2">
+                              <DollarSign className="w-4 h-4 text-primary mt-0.5" />
+                              <p className="text-xs font-semibold">Taille de Position</p>
+                            </div>
+                            <p className="text-sm">
+                              <span className="font-mono font-bold">{analysis.positionSizing.positionSize.toFixed(4)}</span> {crypto.replace('USDT', '')}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Marge requise: ${analysis.positionSizing.margin.toFixed(2)} (Levier {analysis.leverage}x)
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              {analysis.positionSizing.note}
+                            </p>
+                          </div>
+                        )}
                       </>
                     ) : (
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">Take Profit:</span>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Info className="w-3 h-3 text-muted-foreground" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="max-w-xs">Prix cible pour prendre vos bénéfices, calculé avec ATR × 2.0 pour les tendances fortes, × 1.5 pour les tendances modérées.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                        <span className="font-semibold text-success">${analysis.takeProfit.toFixed(2)}</span>
-                      </div>
+                      <p className="text-muted-foreground">Aucun niveau de sortie défini pour ce signal</p>
                     )}
-                    
-                    <div className="flex justify-between items-center p-2 bg-danger/10 rounded border border-danger/20 mt-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">Stop Loss:</span>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Info className="w-3 h-3 text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Prix où couper vos pertes pour limiter le risque. Ajusté selon le type de trade sélectionné.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                      <span className="font-bold text-danger">${analysis.stopLoss.toFixed(2)}</span>
-                    </div>
                   </div>
                 </div>
               </Card>
@@ -519,126 +551,175 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
           </div>
         </Card>
 
-        {/* Indicators Grid */}
-        <div className="grid md:grid-cols-4 gap-4">
-          <Card className="p-6 bg-card border-border">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">RSI (14)</p>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="w-4 h-4 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Relative Strength Index - Mesure la force d'une tendance. &lt;30 = Survente (opportunité d'achat), &gt;70 = Surachat (risque de correction). Calculé sur 14 périodes.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <p className="text-3xl font-bold">{analysis.indicators.rsi.toFixed(1)}</p>
-            <Badge variant={analysis.indicators.rsi < 30 ? "default" : analysis.indicators.rsi > 70 ? "destructive" : "secondary"}>
-              {analysis.indicators.rsi < 30 ? "Survente" : analysis.indicators.rsi > 70 ? "Surachat" : "Neutre"}
-            </Badge>
-          </Card>
+          
+          <div className="grid md:grid-cols-4 gap-4">
+            <Card className="p-6">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">RSI (14)</span>
+                  <Badge variant={
+                    analysis.indicators.rsi < 30 ? "default" : 
+                    analysis.indicators.rsi > 70 ? "destructive" : "secondary"
+                  }>
+                    {analysis.indicators.rsi.toFixed(1)}
+                  </Badge>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all ${
+                      analysis.indicators.rsi < 30 ? "bg-success" :
+                      analysis.indicators.rsi > 70 ? "bg-danger" : "bg-warning"
+                    }`}
+                    style={{ width: `${analysis.indicators.rsi}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {analysis.indicators.rsi < 30 ? "Survendu ✅" : 
+                   analysis.indicators.rsi > 70 ? "Suracheté ⚠️" : "Neutre"}
+                </p>
+              </div>
+            </Card>
 
-          <Card className="p-6 bg-card border-border">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">MACD</p>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="w-4 h-4 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Moving Average Convergence Divergence - Indique le momentum. Positif = tendance haussière, Négatif = tendance baissière. Croisement de la ligne de signal = changement potentiel de tendance.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <p className="text-2xl font-bold">{analysis.indicators.macd}</p>
-            <Badge variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}>
-              {analysis.indicators.macd}
-            </Badge>
-          </Card>
+            <Card className="p-6">
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">MACD</span>
+                <Badge variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}>
+                  {analysis.indicators.macd}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  Momentum {analysis.indicators.macd === "Haussier" ? "↑" : "↓"}
+                </p>
+              </div>
+            </Card>
 
-          <Card className="p-6 bg-card border-border">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">Bollinger Bands</p>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="w-4 h-4 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Bandes de Bollinger - Canaux de volatilité. Prix proche bande basse = survente potentielle, proche bande haute = surachat potentiel. Calculées avec écart-type de 2.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <p className="text-2xl font-bold">{analysis.indicators.bb}</p>
-            <Badge variant="secondary">{analysis.indicators.bb}</Badge>
-          </Card>
+            <Card className="p-6">
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">Bollinger Bands</span>
+                <Badge variant={
+                  analysis.indicators.bb === "Survente" ? "default" : 
+                  analysis.indicators.bb === "Surachat" ? "destructive" : "secondary"
+                }>
+                  {analysis.indicators.bb}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  {analysis.indicators.bb === "Survente" ? "Zone d'achat ✅" : 
+                   analysis.indicators.bb === "Surachat" ? "Zone de vente ⚠️" : "Zone neutre"}
+                </p>
+              </div>
+            </Card>
 
-          <Card className="p-6 bg-card border-border">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">ATR (14)</p>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="w-4 h-4 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Average True Range - Mesure la volatilité. Plus élevé = marché volatil (utiliser levier faible). Plus bas = marché stable (levier plus élevé acceptable). Calculé sur 14 périodes.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <p className="text-3xl font-bold">{analysis.indicators.atr.toFixed(0)}</p>
-            <Badge variant="outline">Volatilité</Badge>
-          </Card>
-        </div>
+            <Card className="p-6">
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">ATR (Volatilité)</span>
+                <p className="text-2xl font-bold">${analysis.indicators.atr.toFixed(2)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Volatilité moyenne sur 14 périodes
+                </p>
+              </div>
+            </Card>
+          </div>
 
-        {/* AI Trading Bot */}
-        <TradingBotAI 
-          symbol={crypto} 
-          cryptoName={cryptoName}
-          analysisData={{
-            signal: analysis.signal,
-            price: analysis.price,
-            stopLoss: analysis.stopLoss,
-            takeProfit: analysis.takeProfit,
-            leverage: analysis.leverage
-          }}
-          onAnalyzeNow={loadAnalysis}
-        />
-
-        {/* Alerts Manager */}
-        <AlertsManager 
-          symbol={crypto} 
-          cryptoName={cryptoName}
-          currentPrice={analysis.price} 
-        />
-
-        {/* Trade Journal Integration */}
-        <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/30">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <h3 className="text-lg font-semibold">Journal de Trading</h3>
-              <p className="text-sm text-muted-foreground">
-                Enregistrez vos trades pour améliorer vos performances avec le moteur d'apprentissage
-              </p>
-            </div>
+          <div className="flex gap-4">
+            <TradingBotAI 
+              symbol={crypto}
+              cryptoName={cryptoName}
+              analysisData={{
+                signal: analysis.signal,
+                price: analysis.price,
+                stopLoss: analysis.stopLoss,
+                takeProfit: analysis.takeProfit,
+                leverage: analysis.leverage
+              }}
+              onAnalyzeNow={loadAnalysis}
+            />
+            
+            <AlertsManager symbol={crypto} cryptoName={cryptoName} currentPrice={analysis.price} />
+            
             <Button 
-              onClick={() => setTradeJournalOpen(true)}
+              onClick={() => setTradeJournalOpen(true)} 
+              variant="outline" 
               className="gap-2"
-              size="lg"
             >
               <BookOpen className="w-4 h-4" />
-              Enregistrer ce Trade
+              Enregistrer le Trade
             </Button>
           </div>
-        </Card>
 
+          {/* News Section */}
+          {news.length > 0 && (
+            <Card className="p-6">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Newspaper className="w-5 h-5" />
+                Actualités Récentes
+              </h3>
+              <div className="space-y-3">
+                {news.slice(0, 5).map((item: any, idx: number) => (
+                  <div key={idx} className="p-4 bg-secondary/30 rounded-lg border border-border">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-1">{item.title}</h4>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{item.description}</p>
+                      </div>
+                      {item.sentiment && (
+                        <Badge variant={
+                          item.sentiment === 'positive' ? 'default' : 
+                          item.sentiment === 'negative' ? 'destructive' : 'secondary'
+                        }>
+                          {item.sentiment}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Tweets Section */}
+          {tweets.length > 0 && (
+            <Card className="p-6">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Twitter className="w-5 h-5" />
+                Sentiment Twitter
+              </h3>
+              <div className="space-y-3">
+                {tweets.slice(0, 5).map((tweet: any, idx: number) => (
+                  <div key={idx} className="p-4 bg-secondary/30 rounded-lg border border-border">
+                    <p className="text-sm mb-2">{tweet.text}</p>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{tweet.author}</span>
+                      {tweet.sentiment && (
+                        <Badge variant={
+                          tweet.sentiment === 'positive' ? 'default' : 
+                          tweet.sentiment === 'negative' ? 'destructive' : 'secondary'
+                        } className="text-xs">
+                          {tweet.sentiment}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <Card className="p-6 bg-primary/5 border-primary/20">
+            <div className="flex items-start gap-3">
+              <Brain className="w-6 h-6 text-primary mt-1" />
+              <div>
+                <h3 className="font-bold text-lg mb-2">Recommandation Finale de l'IA</h3>
+                <p className="text-sm whitespace-pre-line">{analysis.recommendation}</p>
+                <p className="text-xs text-muted-foreground mt-4">
+                  ⚠️ Cette analyse est fournie à titre informatif uniquement et ne constitue pas un conseil en investissement.
+                  Faites toujours vos propres recherches avant de prendre une décision de trading.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {analysis && (
         <TradeJournal
           open={tradeJournalOpen}
           onOpenChange={setTradeJournalOpen}
@@ -652,89 +733,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
             leverage: analysis.leverage
           }}
         />
-
-        {/* News Section */}
-        {news.length > 0 && (
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Newspaper className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">Actualités Crypto</h3>
-              <Badge variant="secondary">{news.length}</Badge>
-            </div>
-            <div className="space-y-3">
-              {news.slice(0, 5).map((item, idx) => (
-                <a
-                  key={idx}
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-4 bg-secondary/30 rounded-lg hover:bg-secondary/50 transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <Badge 
-                      variant={item.sentiment === 'positive' ? 'default' : item.sentiment === 'negative' ? 'destructive' : 'outline'}
-                      className="mt-1"
-                    >
-                      {item.sentiment === 'positive' ? '🟢' : item.sentiment === 'negative' ? '🔴' : '⚪'}
-                    </Badge>
-                    <div className="flex-1">
-                      <h4 className="font-medium leading-tight mb-1">{item.title}</h4>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span>{item.source}</span>
-                        <span>•</span>
-                        <span>{new Date(item.published).toLocaleDateString('fr-FR')}</span>
-                      </div>
-                    </div>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Tweets Section */}
-        {tweets.length > 0 && (
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Twitter className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">Tweets Récents</h3>
-              <Badge variant="secondary">{tweets.length}</Badge>
-            </div>
-            <div className="space-y-3">
-              {tweets.slice(0, 5).map((tweet, idx) => (
-                <div key={idx} className="p-4 bg-secondary/30 rounded-lg">
-                  <p className="text-sm leading-relaxed mb-2">{tweet.text}</p>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{new Date(tweet.created).toLocaleDateString('fr-FR')}</span>
-                    <span>❤️ {tweet.likes}</span>
-                    <span>🔄 {tweet.retweets}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Recommendation */}
-        <Card className="p-6 bg-card border-l-4 border-l-primary">
-          <div className="flex gap-4">
-            <AlertTriangle className="w-6 h-6 text-primary flex-shrink-0 mt-1" />
-            <div className="space-y-2">
-              <h3 className="font-semibold text-lg">Recommandation de l'IA</h3>
-              <p className="text-muted-foreground leading-relaxed">
-                {analysis.recommendation}. L'analyse multi-timeframes (1h, 4h, 1j) suggère une position{" "}
-                <span className={`font-bold text-${signalColor}`}>{analysis.signal}</span>{" "}
-                avec un niveau de confiance de {analysis.confidence.toFixed(1)}%.
-                Le levier recommandé de {analysis.leverage}x est calculé en fonction de la volatilité actuelle (ATR).
-              </p>
-              <p className="text-sm text-muted-foreground italic">
-                ⚠️ Cette analyse est fournie à titre informatif. Toujours faire ses propres recherches et utiliser une gestion de risque appropriée.
-              </p>
-            </div>
-          </div>
-        </Card>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

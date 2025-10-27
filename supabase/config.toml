@@ -13,3 +13,15 @@ verify_jwt = false
 [functions.intraday-scanner-vwap]
 
 [functions.fundamental-analysis]
+
+[functions.crypto-analysis]
+
+[functions.crypto-news]
+
+[functions.crypto-search]
+
+[functions.market-analysis]
+
+[functions.check-alerts]
+
+[functions.send-telegram-alert]

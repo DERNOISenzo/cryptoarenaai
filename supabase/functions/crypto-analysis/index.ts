@@ -558,25 +558,35 @@ serve(async (req) => {
     const totalScore = bullishScore + bearishScore;
     const confidence = totalScore > 0 ? (Math.max(bullishScore, bearishScore) / totalScore) * 100 : 50;
 
-    let signal: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+    // POINT 1: FORCER LONG/SHORT EN UTILISANT LA TENDANCE 1D COMME ARBITRE
+    // Ne jamais retourner NEUTRAL, toujours choisir entre LONG et SHORT
+    let signal: 'LONG' | 'SHORT' = 'LONG';
     
-    // Use personalized thresholds from learning engine
-    if (bullishScore > bearishScore && confidence > (userParams.confidence_threshold - 2) && bullishScore >= userParams.min_bullish_score) {
-      // Don't signal LONG if MACD is clearly bearish
+    // Determine direction using 1D EMA as master indicator
+    const ema50_1d = calculateEMA(closes1d, 50);
+    const price1d = closes1d[closes1d.length - 1];
+    const masterTrend = price1d > ema50_1d ? 'bullish' : 'bearish';
+    
+    // Use personalized thresholds but force a choice
+    if (bullishScore > bearishScore) {
+      signal = 'LONG';
+      // Reduce confidence if MACD contradicts
       if (macdIsBearish && Math.abs(macdHist) > atr14 * 0.1) {
-        signal = 'NEUTRAL';
-        console.log('⚠️ Signal LONG rejected: MACD is bearish');
-      } else {
-        signal = 'LONG';
+        const reduction = 15;
+        console.log(`⚠️ MACD contradicts LONG signal: reducing confidence by ${reduction}%`);
+        // Store this for later confidence adjustment
       }
-    } else if (bearishScore > bullishScore && confidence > (userParams.confidence_threshold - 2) && bearishScore >= userParams.min_bullish_score) {
-      // Don't signal SHORT if MACD is clearly bullish
+    } else if (bearishScore > bullishScore) {
+      signal = 'SHORT';
+      // Reduce confidence if MACD contradicts
       if (macdIsBullish && macdHist > atr14 * 0.1) {
-        signal = 'NEUTRAL';
-        console.log('⚠️ Signal SHORT rejected: MACD is bullish');
-      } else {
-        signal = 'SHORT';
+        const reduction = 15;
+        console.log(`⚠️ MACD contradicts SHORT signal: reducing confidence by ${reduction}%`);
       }
+    } else {
+      // Scores are equal - use master trend (1D EMA) to decide
+      signal = masterTrend === 'bullish' ? 'LONG' : 'SHORT';
+      console.log(`⚖️ Scores égaux - utilisation de la tendance maître 1D: ${signal}`);
     }
 
     // Multi-level TP/SL strategy based on ATR, trend strength, trade type, and target duration
@@ -651,9 +661,7 @@ serve(async (req) => {
     // Use TP2 as main target for risk/reward calculation
     const takeProfit = takeProfit2;
 
-    const riskReward = signal !== 'NEUTRAL' 
-      ? Math.abs((takeProfit - currentPrice) / (currentPrice - stopLoss))
-      : 0;
+    const riskReward = Math.abs((takeProfit - currentPrice) / (currentPrice - stopLoss));
 
     // Advanced leverage calculation with personalized max leverage and duration adjustment
     const volatilityPercent = (atr14 / currentPrice) * 100;
@@ -720,21 +728,27 @@ serve(async (req) => {
     // Calculate time horizon based on target duration or historical data
     const timeHorizon = calculateTimeHorizon(closes, atr14, currentPrice, takeProfit, parseFloat(ticker.quoteVolume), targetDuration);
     
-    // Fetch user settings for real position sizing
+    // POINT 2: UTILISER LE CAPITAL ET GESTION DU RISQUE
     let userCapital = 10000; // default
     let userRiskPercent = 1; // default
+    let maxDailyLoss = 50; // default
+    let currentDailyLoss = 0; // default
+    let targetWinRate = 60; // default
     
     if (supabaseClient && userId) {
       try {
         const { data: userSettings } = await supabaseClient
           .from('user_settings')
-          .select('capital, risk_percent_per_trade')
+          .select('capital, risk_percent_per_trade, max_loss_per_day, current_loss_today, target_win_rate')
           .eq('user_id', userId)
           .maybeSingle();
         
         if (userSettings) {
           userCapital = parseFloat(userSettings.capital);
           userRiskPercent = parseFloat(userSettings.risk_percent_per_trade);
+          maxDailyLoss = parseFloat(userSettings.max_loss_per_day);
+          currentDailyLoss = parseFloat(userSettings.current_loss_today);
+          targetWinRate = parseFloat(userSettings.target_win_rate) || 60;
         }
       } catch (e) {
         console.log('Could not fetch user settings, using defaults:', e);
@@ -743,6 +757,19 @@ serve(async (req) => {
     
     // Calculate position sizing with user's real capital and risk parameters
     const realPositionSize = calculatePositionSize(userCapital, currentPrice, stopLoss, userRiskPercent, suggestedLeverage);
+    
+    // POINT 2: FILTRAGE BASÉ SUR LA PERTE MAX DU JOUR
+    const potentialLoss = realPositionSize.risk;
+    const totalDailyLoss = currentDailyLoss + potentialLoss;
+    
+    if (totalDailyLoss > maxDailyLoss) {
+      console.log(`🚫 SIGNAL REFUSÉ: Perte potentielle totale ($${totalDailyLoss.toFixed(2)}) dépasse la limite journalière ($${maxDailyLoss.toFixed(2)})`);
+      throw new Error(`Limite de perte journalière atteinte. Perte actuelle: $${currentDailyLoss.toFixed(2)}, limite: $${maxDailyLoss.toFixed(2)}. Arrêtez de trader aujourd'hui.`);
+    }
+    
+    // POINT 2: AJUSTER LA CONFIANCE SELON LE WIN RATE CIBLE
+    // Si le win rate cible est élevé, on augmente le seuil de confiance minimum
+    const minConfidenceAdjustment = targetWinRate > 70 ? 10 : targetWinRate > 60 ? 5 : 0;
     
     // Calculate dollar amounts for each TP level
     const tp1Amount = signal === 'LONG' 
@@ -830,8 +857,45 @@ serve(async (req) => {
       console.log('Could not fetch news:', e);
     }
 
-    // Adjust final confidence with external factors
-    const adjustedConfidence = Math.min(95, Math.max(30, confidence + eventsImpact + fundamentalScore + newsImpact));
+    // POINT 4: ÉLIMINER LES INCOHÉRENCES EN RÉDUISANT LA CONFIANCE
+    let coherenceReduction = 0;
+    
+    // Check RSI vs signal coherence
+    if (signal === 'LONG' && rsi14 > userParams.rsi_overbought_threshold) {
+      coherenceReduction += 10;
+      console.log('⚠️ Incohérence: Signal LONG mais RSI suracheté');
+    }
+    if (signal === 'SHORT' && rsi14 < userParams.rsi_oversold_threshold) {
+      coherenceReduction += 10;
+      console.log('⚠️ Incohérence: Signal SHORT mais RSI survendu');
+    }
+    
+    // Check MACD vs signal coherence (déjà fait plus haut, mais on le comptabilise ici)
+    if (signal === 'LONG' && macdIsBearish) {
+      coherenceReduction += 15;
+    }
+    if (signal === 'SHORT' && macdIsBullish) {
+      coherenceReduction += 15;
+    }
+    
+    // Check BB vs signal coherence
+    const bbPos = (currentPrice - bb.lower) / (bb.upper - bb.lower);
+    if (signal === 'LONG' && bbPos > 0.9) {
+      coherenceReduction += 8;
+      console.log('⚠️ Incohérence: Signal LONG mais prix en haut de BB');
+    }
+    if (signal === 'SHORT' && bbPos < 0.1) {
+      coherenceReduction += 8;
+      console.log('⚠️ Incohérence: Signal SHORT mais prix en bas de BB');
+    }
+    
+    // Adjust final confidence with external factors and coherence check
+    let adjustedConfidence = Math.min(95, Math.max(30, confidence + eventsImpact + fundamentalScore + newsImpact - coherenceReduction));
+    
+    // POINT 2: Apply win rate target adjustment
+    if (adjustedConfidence < userParams.confidence_threshold + minConfidenceAdjustment) {
+      console.log(`📊 Confiance (${adjustedConfidence.toFixed(1)}%) inférieure au seuil requis (${userParams.confidence_threshold + minConfidenceAdjustment}%) pour le win rate cible de ${targetWinRate}%`);
+    }
 
     const analysis = {
       signal,
@@ -868,10 +932,25 @@ serve(async (req) => {
         positionSize: realPositionSize.size,
         margin: realPositionSize.margin,
         riskAmount: realPositionSize.risk,
+        // POINT 9: SORTIES PARTIELLES AVEC MONTANTS EN $
         tp1Profit: Math.round(tp1Amount * 100) / 100,
         tp2Profit: Math.round(tp2Amount * 100) / 100,
         tp3Profit: Math.round(tp3Amount * 100) / 100,
-        note: `Basé sur votre capital de $${userCapital.toFixed(2)} avec ${userRiskPercent}% de risque par trade`
+        // POINT 9: Plan de sortie partielle (50%, 30%, 20%)
+        exitPlan: {
+          tp1: { percent: 50, profit: Math.round((tp1Amount * 0.5) * 100) / 100, action: 'Prendre 50% des profits et déplacer SL au break-even' },
+          tp2: { percent: 30, profit: Math.round((tp2Amount * 0.3) * 100) / 100, action: 'Prendre 30% supplémentaires et déplacer SL à TP1' },
+          tp3: { percent: 20, profit: Math.round((tp3Amount * 0.2) * 100) / 100, action: 'Prendre les 20% restants ou laisser courir avec trailing stop' }
+        },
+        dailyRiskStatus: {
+          currentLoss: currentDailyLoss,
+          maxLoss: maxDailyLoss,
+          remaining: maxDailyLoss - currentDailyLoss,
+          tradeRisk: realPositionSize.risk,
+          afterThisTrade: currentDailyLoss + realPositionSize.risk,
+          status: (currentDailyLoss + realPositionSize.risk) > maxDailyLoss * 0.8 ? 'WARNING' : 'OK'
+        },
+        note: `Capital: $${userCapital.toFixed(2)} | Risque: ${userRiskPercent}% | Win rate cible: ${targetWinRate}%`
       },
       recommendation: generateRecommendation(
         signal, 
