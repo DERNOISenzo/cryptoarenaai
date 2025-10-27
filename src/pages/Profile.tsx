@@ -9,7 +9,6 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, User, Mail, Calendar } from "lucide-react";
 import Header from "@/components/Header";
 import UserSettings from "@/components/UserSettings";
-import LearningEnginePanel from "@/components/LearningEnginePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const Profile = () => {
   const [loading, setLoading] = useState(true);
@@ -130,10 +129,9 @@ const Profile = () => {
           </Button>
 
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="profile">👤 Profil</TabsTrigger>
               <TabsTrigger value="settings">⚙️ Trading</TabsTrigger>
-              <TabsTrigger value="learning">🧠 Optimisation IA</TabsTrigger>
             </TabsList>
 
             <TabsContent value="profile" className="space-y-6">
@@ -255,10 +253,6 @@ const Profile = () => {
 
             <TabsContent value="settings">
               <UserSettings userId={userId} />
-            </TabsContent>
-
-            <TabsContent value="learning">
-              <LearningEnginePanel />
             </TabsContent>
           </Tabs>
         </div>
