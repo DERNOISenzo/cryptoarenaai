@@ -7,7 +7,6 @@ import TradingDashboard from "@/components/TradingDashboard";
 import CryptoSearch from "@/components/CryptoSearch";
 import { supabase } from "@/integrations/supabase/client";
 import { Session } from "@supabase/supabase-js";
-import Header from "@/components/Header";
 
 const Index = () => {
   const [started, setStarted] = useState(false);
@@ -74,7 +73,6 @@ const Index = () => {
   if (started) {
     return (
       <div className="min-h-screen bg-background">
-        {session && <Header userId={session.user.id} />}
         <div className="p-4">
           <CryptoSearch onSelect={handleSelect} onBack={() => setStarted(false)} />
         </div>
@@ -84,7 +82,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header userId={session?.user.id} />
       <div className="flex items-center justify-center p-4 min-h-screen">
       <div className="max-w-4xl w-full space-y-8 animate-slide-up">
         <div className="text-center space-y-4">

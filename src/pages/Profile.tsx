@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, User, Mail, Calendar } from "lucide-react";
-import Header from "@/components/Header";
 import UserSettings from "@/components/UserSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const Profile = () => {
@@ -120,7 +119,6 @@ const Profile = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header userId={userId} />
       <div className="p-4 md:p-8">
         <div className="max-w-6xl mx-auto space-y-6">
           <Button variant="outline" onClick={() => navigate("/")} className="gap-2">

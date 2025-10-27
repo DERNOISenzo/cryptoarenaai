@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, TrendingUp, Sparkles, Brain, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import Header from "@/components/Header";
 import LearningEnginePanel from "@/components/LearningEnginePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -109,7 +108,6 @@ const MarketAnalysis = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {userId && <Header userId={userId} />}
       <div className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
