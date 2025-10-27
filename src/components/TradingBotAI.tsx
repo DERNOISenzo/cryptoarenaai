@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Brain, TrendingUp, Globe, Calculator } from "lucide-react";
+import { Brain, TrendingUp, Calculator } from "lucide-react";
 import RiskCalculator from "./RiskCalculator";
 
 interface TradingBotAIProps {
@@ -34,7 +34,7 @@ const TradingBotAI = ({ symbol, cryptoName, analysisData, onAnalyzeNow }: Tradin
           Outils avancés pour optimiser votre trading
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Button 
             onClick={onAnalyzeNow}
             variant="default"
@@ -44,18 +44,6 @@ const TradingBotAI = ({ symbol, cryptoName, analysisData, onAnalyzeNow }: Tradin
             <div className="text-center">
               <p className="font-semibold">Analyser Maintenant</p>
               <p className="text-xs opacity-80">Données fraîches</p>
-            </div>
-          </Button>
-          
-          <Button 
-            onClick={() => navigate('/market-analysis')}
-            variant="outline"
-            className="h-auto py-4 flex-col gap-2"
-          >
-            <Globe className="w-6 h-6" />
-            <div className="text-center">
-              <p className="font-semibold">Opportunités Globales</p>
-              <p className="text-xs opacity-80">Marché complet</p>
             </div>
           </Button>
           

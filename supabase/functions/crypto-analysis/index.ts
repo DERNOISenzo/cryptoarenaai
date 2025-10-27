@@ -607,11 +607,12 @@ serve(async (req) => {
       ? Math.abs((takeProfit - currentPrice) / (currentPrice - stopLoss))
       : 0;
 
-    // Advanced leverage calculation with personalized max leverage
+    // Advanced leverage calculation with personalized max leverage and duration adjustment
     const volatilityPercent = (atr14 / currentPrice) * 100;
     const trendStrength = adx;
     let suggestedLeverage = Math.min(2, userParams.max_leverage);
     
+    // Base leverage calculation
     if (volatilityPercent < 0.8 && trendStrength > 25 && confidence > 70) {
       suggestedLeverage = Math.min(10, userParams.max_leverage);
     } else if (volatilityPercent < 1.5 && trendStrength > 20 && confidence > 65) {
@@ -620,6 +621,28 @@ serve(async (req) => {
       suggestedLeverage = Math.min(5, userParams.max_leverage);
     } else if (volatilityPercent < 4) {
       suggestedLeverage = Math.min(3, userParams.max_leverage);
+    }
+    
+    // Adjust leverage based on target duration
+    if (targetDuration > 0) {
+      if (targetDuration <= 60) {
+        // Very short duration (≤1h): can use higher leverage
+        suggestedLeverage = Math.min(suggestedLeverage + 3, userParams.max_leverage, 20);
+      } else if (targetDuration <= 240) {
+        // Short duration (1-4h): slightly higher leverage
+        suggestedLeverage = Math.min(suggestedLeverage + 2, userParams.max_leverage, 15);
+      } else if (targetDuration <= 1440) {
+        // Medium duration (4h-1d): baseline leverage
+        suggestedLeverage = Math.min(suggestedLeverage + 1, userParams.max_leverage, 10);
+      } else if (targetDuration <= 10080) {
+        // Long duration (1-7d): reduce leverage
+        suggestedLeverage = Math.min(suggestedLeverage, userParams.max_leverage, 7);
+      } else {
+        // Very long duration (>7d): significantly reduce leverage
+        suggestedLeverage = Math.min(suggestedLeverage - 1, userParams.max_leverage, 5);
+      }
+      // Ensure minimum leverage of 1
+      suggestedLeverage = Math.max(1, suggestedLeverage);
     }
 
     // Fetch 24h ticker

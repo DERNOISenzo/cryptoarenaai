@@ -73,8 +73,46 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const [userId, setUserId] = useState<string>("");
   const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
   const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>(initialTradeType);
+  const [targetDuration, setTargetDuration] = useState<number>(0); // in minutes
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Duration options based on trade type
+  const getDurationOptions = () => {
+    switch (tradeType) {
+      case 'scalp':
+        return [
+          { label: '15 minutes', value: 15 },
+          { label: '30 minutes', value: 30 },
+          { label: '1 heure', value: 60 },
+          { label: '2 heures', value: 120 },
+        ];
+      case 'swing':
+        return [
+          { label: '4 heures', value: 240 },
+          { label: '12 heures', value: 720 },
+          { label: '1 jour', value: 1440 },
+          { label: '2 jours', value: 2880 },
+        ];
+      case 'long':
+        return [
+          { label: '1 semaine', value: 10080 },
+          { label: '2 semaines', value: 20160 },
+          { label: '1 mois', value: 43200 },
+          { label: '3 mois', value: 129600 },
+        ];
+      default:
+        return [];
+    }
+  };
+  
+  // Reset target duration when trade type changes
+  useEffect(() => {
+    const options = getDurationOptions();
+    if (options.length > 0) {
+      setTargetDuration(options[0].value);
+    }
+  }, [tradeType]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -89,8 +127,10 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   }, [navigate]);
 
   useEffect(() => {
-    loadAnalysis();
-  }, [crypto, tradeType]);
+    if (targetDuration > 0) {
+      loadAnalysis();
+    }
+  }, [crypto, tradeType, targetDuration]);
 
   const loadAnalysis = async () => {
     setLoading(true);
@@ -98,7 +138,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
     try {
       // Load analysis from edge function
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('crypto-analysis', {
-        body: { symbol: crypto, tradeType }
+        body: { symbol: crypto, tradeType, targetDuration }
       });
 
       if (analysisError) throw analysisError;
@@ -194,30 +234,49 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
             
             {/* Trade Type Selector */}
             <Card className="p-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Type de Trade:</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant={tradeType === 'scalp' ? 'default' : 'outline'}
-                    onClick={() => setTradeType('scalp')}
-                    size="sm"
-                  >
-                    🎯 Scalp
-                  </Button>
-                  <Button
-                    variant={tradeType === 'swing' ? 'default' : 'outline'}
-                    onClick={() => setTradeType('swing')}
-                    size="sm"
-                  >
-                    📊 Swing
-                  </Button>
-                  <Button
-                    variant={tradeType === 'long' ? 'default' : 'outline'}
-                    onClick={() => setTradeType('long')}
-                    size="sm"
-                  >
-                    💎 Long Terme
-                  </Button>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">Type de Trade:</span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={tradeType === 'scalp' ? 'default' : 'outline'}
+                      onClick={() => setTradeType('scalp')}
+                      size="sm"
+                    >
+                      🎯 Scalp
+                    </Button>
+                    <Button
+                      variant={tradeType === 'swing' ? 'default' : 'outline'}
+                      onClick={() => setTradeType('swing')}
+                      size="sm"
+                    >
+                      📊 Swing
+                    </Button>
+                    <Button
+                      variant={tradeType === 'long' ? 'default' : 'outline'}
+                      onClick={() => setTradeType('long')}
+                      size="sm"
+                    >
+                      💎 Long Terme
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Duration Selector */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">Durée du Trade:</span>
+                  <div className="flex gap-2">
+                    {getDurationOptions().map((option) => (
+                      <Button
+                        key={option.value}
+                        variant={targetDuration === option.value ? 'default' : 'outline'}
+                        onClick={() => setTargetDuration(option.value)}
+                        size="sm"
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </Card>
