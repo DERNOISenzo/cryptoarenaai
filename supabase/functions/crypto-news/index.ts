@@ -14,59 +14,105 @@ interface NewsArticle {
   sentimentScore: number; // -2 à +2
   keywords: string[];
   criticalKeywords: string[];
+  scoreAdjustment: number; // Impact on crypto score (-20 to +20)
 }
 
-// Advanced sentiment analysis with critical keyword detection
-function analyzeSentiment(text: string): { sentiment: NewsArticle['sentiment']; score: number; criticalKeywords: string[] } {
+// Advanced sentiment analysis with critical keyword detection and score adjustment
+function analyzeSentiment(text: string): { 
+  sentiment: NewsArticle['sentiment']; 
+  score: number; 
+  criticalKeywords: string[];
+  scoreAdjustment: number; // Score adjustment for crypto analysis (-20 to +20)
+} {
   const lowerText = text.toLowerCase();
   
-  // Critical keywords (higher weight)
-  const criticalPositive = ['listing', 'partnership', 'partenariat', 'upgrade', 'mainnet', 'adoption massive', 'institutional', 'breakthrough'];
-  const criticalNegative = ['hack', 'scam', 'rug pull', 'exploit', 'regulation', 'ban', 'lawsuit', 'fraud', 'ponzi'];
+  // Critical keywords (higher weight and score adjustment)
+  const criticalPositive = [
+    { keyword: 'listing', weight: 3, adjustment: 15 },
+    { keyword: 'partnership', weight: 3, adjustment: 12 },
+    { keyword: 'partenariat', weight: 3, adjustment: 12 },
+    { keyword: 'upgrade', weight: 2, adjustment: 10 },
+    { keyword: 'mainnet', weight: 3, adjustment: 15 },
+    { keyword: 'adoption massive', weight: 2, adjustment: 10 },
+    { keyword: 'institutional', weight: 2, adjustment: 12 },
+    { keyword: 'breakthrough', weight: 2, adjustment: 10 },
+    { keyword: 'airdrop', weight: 2, adjustment: 8 },
+    { keyword: 'snapshot', weight: 1, adjustment: 5 },
+    { keyword: 'halving', weight: 3, adjustment: 15 },
+    { keyword: 'hard fork', weight: 2, adjustment: 10 }
+  ];
+  
+  const criticalNegative = [
+    { keyword: 'hack', weight: -3, adjustment: -20 },
+    { keyword: 'scam', weight: -3, adjustment: -20 },
+    { keyword: 'rug pull', weight: -3, adjustment: -20 },
+    { keyword: 'exploit', weight: -3, adjustment: -18 },
+    { keyword: 'regulation', weight: -1, adjustment: -8 },
+    { keyword: 'ban', weight: -3, adjustment: -15 },
+    { keyword: 'lawsuit', weight: -2, adjustment: -12 },
+    { keyword: 'fraud', weight: -3, adjustment: -20 },
+    { keyword: 'ponzi', weight: -3, adjustment: -20 },
+    { keyword: 'delisting', weight: -3, adjustment: -18 },
+    { keyword: 'suspension', weight: -2, adjustment: -10 },
+    { keyword: 'investigation', weight: -2, adjustment: -10 }
+  ];
   
   // Standard keywords
-  const positiveWords = ['hausse', 'monte', 'gain', 'bull', 'rallye', 'surge', 'rise', 'up', 'pump', 'innovation', 'growth', 'success', 'profit'];
-  const negativeWords = ['baisse', 'chute', 'perte', 'bear', 'crash', 'drop', 'down', 'dump', 'decline', 'loss', 'risk', 'warning'];
+  const positiveWords = ['hausse', 'monte', 'gain', 'bull', 'rallye', 'surge', 'rise', 'up', 'pump', 'innovation', 'growth', 'success', 'profit', 'accumulation'];
+  const negativeWords = ['baisse', 'chute', 'perte', 'bear', 'crash', 'drop', 'down', 'dump', 'decline', 'loss', 'risk', 'warning', 'concern', 'panic'];
   
   let score = 0;
+  let scoreAdjustment = 0;
   const foundCriticalKeywords: string[] = [];
   
-  // Check critical keywords (weight: 2)
-  criticalPositive.forEach(word => {
-    if (lowerText.includes(word)) {
-      score += 2;
-      foundCriticalKeywords.push(word);
+  // Check critical positive keywords
+  criticalPositive.forEach(({ keyword, weight, adjustment }) => {
+    if (lowerText.includes(keyword)) {
+      score += weight;
+      scoreAdjustment += adjustment;
+      foundCriticalKeywords.push(`+${keyword}`);
     }
   });
   
-  criticalNegative.forEach(word => {
-    if (lowerText.includes(word)) {
-      score -= 2;
-      foundCriticalKeywords.push(word);
+  // Check critical negative keywords
+  criticalNegative.forEach(({ keyword, weight, adjustment }) => {
+    if (lowerText.includes(keyword)) {
+      score += weight;
+      scoreAdjustment += adjustment;
+      foundCriticalKeywords.push(`-${keyword}`);
     }
   });
   
   // Check standard keywords (weight: 1)
   positiveWords.forEach(word => {
-    if (lowerText.includes(word)) score += 1;
+    if (lowerText.includes(word)) {
+      score += 1;
+      scoreAdjustment += 2;
+    }
   });
   
   negativeWords.forEach(word => {
-    if (lowerText.includes(word)) score -= 1;
+    if (lowerText.includes(word)) {
+      score -= 1;
+      scoreAdjustment -= 2;
+    }
   });
   
   // Determine sentiment category
   let sentiment: NewsArticle['sentiment'];
-  if (score >= 3) sentiment = 'très positif';
+  if (score >= 4) sentiment = 'très positif';
   else if (score >= 1) sentiment = 'positif';
-  else if (score <= -3) sentiment = 'très négatif';
+  else if (score <= -4) sentiment = 'très négatif';
   else if (score <= -1) sentiment = 'négatif';
   else sentiment = 'neutre';
   
   // Normalize score to -2 to +2 range
   const normalizedScore = Math.max(-2, Math.min(2, score / 3));
   
-  return { sentiment, score: normalizedScore, criticalKeywords: foundCriticalKeywords };
+  // Cap score adjustment
+  scoreAdjustment = Math.max(-20, Math.min(20, scoreAdjustment));
+  
+  return { sentiment, score: normalizedScore, criticalKeywords: foundCriticalKeywords, scoreAdjustment };
 }
 
 // Extract keywords from text
@@ -115,7 +161,7 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
         const description = descMatch ? descMatch[2].trim() : '';
         const fullText = title + ' ' + description;
         
-        const { sentiment, score, criticalKeywords } = analyzeSentiment(fullText);
+        const { sentiment, score, criticalKeywords, scoreAdjustment } = analyzeSentiment(fullText);
         
         articles.push({
           title: title.replace(/<[^>]+>/g, ''), // Strip HTML tags
@@ -125,7 +171,8 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
           sentiment,
           sentimentScore: score,
           keywords: extractKeywords(fullText),
-          criticalKeywords
+          criticalKeywords,
+          scoreAdjustment
         });
       }
     });
@@ -172,7 +219,7 @@ async function fetchHTMLFallback(url: string, sourceName: string): Promise<NewsA
     });
     
     foundTitles.forEach(title => {
-      const { sentiment, score, criticalKeywords } = analyzeSentiment(title);
+      const { sentiment, score, criticalKeywords, scoreAdjustment } = analyzeSentiment(title);
       articles.push({
         title,
         url: baseUrl,
@@ -181,7 +228,8 @@ async function fetchHTMLFallback(url: string, sourceName: string): Promise<NewsA
         sentiment,
         sentimentScore: score,
         keywords: extractKeywords(title),
-        criticalKeywords
+        criticalKeywords,
+        scoreAdjustment
       });
     });
     
@@ -201,7 +249,7 @@ serve(async (req) => {
     const { symbol, baseAsset } = await req.json();
     console.log('Fetching news for:', symbol, baseAsset);
 
-    // 8 sources d'actualités crypto conformes - URLs vérifiées
+    // 12 sources d'actualités crypto conformes et fiables
     const newsSources = [
       { url: 'https://cointelegraph.com/rss', name: 'CoinTelegraph' },
       { url: 'https://coindesk.com/arc/outboundfeeds/rss/', name: 'CoinDesk' },
@@ -210,7 +258,11 @@ serve(async (req) => {
       { url: 'https://bitcoinmagazine.com/.rss/full/', name: 'Bitcoin Magazine' },
       { url: 'https://decrypt.co/feed', name: 'Decrypt' },
       { url: 'https://www.theblock.co/rss.xml', name: 'The Block' },
-      { url: 'https://cryptonews.com/news/feed/', name: 'CryptoNews' }
+      { url: 'https://cryptonews.com/news/feed/', name: 'CryptoNews' },
+      { url: 'https://beincrypto.com/feed/', name: 'BeInCrypto' },
+      { url: 'https://cryptobriefing.com/feed/', name: 'Crypto Briefing' },
+      { url: 'https://u.today/rss', name: 'U.Today' },
+      { url: 'https://cryptopotato.com/feed/', name: 'CryptoPotato' }
     ];
 
     // Fetch from all sources in parallel
@@ -258,6 +310,9 @@ serve(async (req) => {
 
     // Collect all critical keywords
     const allCriticalKeywords = topNews.flatMap(article => article.criticalKeywords);
+    
+    // Calculate total score adjustment impact
+    const totalScoreAdjustment = topNews.reduce((sum, article) => sum + article.scoreAdjustment, 0) / (topNews.length || 1);
 
     return new Response(JSON.stringify({ 
       news: topNews,
@@ -266,7 +321,8 @@ serve(async (req) => {
       sentiment: {
         overall: overallSentiment,
         score: avgScore,
-        criticalKeywords: allCriticalKeywords
+        criticalKeywords: allCriticalKeywords,
+        scoreAdjustment: Math.round(totalScoreAdjustment) // Average adjustment for crypto score
       },
       sources: newsSources.map(s => s.name)
     }), {
