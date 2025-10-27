@@ -39,9 +39,9 @@ const UserSettings = ({ userId }: UserSettingsProps) => {
         .from('user_settings')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
 
       if (data) {
         setCapital(data.capital.toString());
@@ -70,6 +70,8 @@ const UserSettings = ({ userId }: UserSettingsProps) => {
           preferred_trade_style: tradeStyle,
           exit_strategy: exitStrategy,
           target_win_rate: parseFloat(targetWinRate),
+        }, {
+          onConflict: 'user_id'
         });
 
       if (error) throw error;

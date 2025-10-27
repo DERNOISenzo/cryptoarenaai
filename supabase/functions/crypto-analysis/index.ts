@@ -161,14 +161,42 @@ function calculateADX(highs: number[], lows: number[], closes: number[], period 
   return dx;
 }
 
-// Calculate time horizon with annualized volatility
+// Calculate time horizon based on target duration or volatility
 function calculateTimeHorizon(
   closes: number[],
   atr: number,
   currentPrice: number,
   takeProfit: number,
-  volume24h: number
+  volume24h: number,
+  targetDurationMinutes?: number
 ): { estimate: string; type: string; hours: number; confidence: number } {
+  // If target duration is provided, use it directly
+  if (targetDurationMinutes && targetDurationMinutes > 0) {
+    const hours = Math.round(targetDurationMinutes / 60);
+    const days = Math.round(targetDurationMinutes / 1440);
+    
+    let estimate: string;
+    let type: string;
+    
+    if (targetDurationMinutes < 60) {
+      estimate = `${targetDurationMinutes}min`;
+      type = "SCALP";
+    } else if (targetDurationMinutes < 1440) {
+      estimate = `${hours}h`;
+      type = "INTRADAY";
+    } else if (targetDurationMinutes < 10080) {
+      estimate = `${days}j`;
+      type = "SWING";
+    } else {
+      const weeks = Math.round(days / 7);
+      estimate = `${weeks}sem`;
+      type = "LONG TERME";
+    }
+    
+    return { estimate, type, hours, confidence: 85 };
+  }
+  
+  // Otherwise, calculate based on volatility
   if (closes.length < 20) {
     return { estimate: "N/A", type: "INSUFFISANT", hours: 0, confidence: 0 };
   }
@@ -313,6 +341,8 @@ serve(async (req) => {
 
     // Get user's analysis parameters (if authenticated) from the Authorization header
     const authHeader = req.headers.get('Authorization');
+    let userId: string | null = null;
+    let supabaseClient: any = null;
     let userParams = {
       rsi_oversold_threshold: 30,
       rsi_overbought_threshold: 70,
@@ -353,13 +383,14 @@ serve(async (req) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-        const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+        supabaseClient = createClient(supabaseUrl, supabaseKey, {
           global: { headers: { Authorization: authHeader } }
         });
         
         const { data: authData } = await supabaseClient.auth.getUser();
         
         if (authData.user) {
+          userId = authData.user.id;
           const { data: params } = await supabaseClient
             .from('analysis_params')
             .select('*')
@@ -462,6 +493,10 @@ serve(async (req) => {
     let bullishScore = 0;
     let bearishScore = 0;
 
+    // Pre-calculate MACD directional bias (used for coherence check later)
+    const macdIsBullish = macdHist > 0 && macd > macdSignal;
+    const macdIsBearish = macdHist < 0 && macd < macdSignal;
+
     // RSI analysis with personalized thresholds
     if (rsi14 < userParams.rsi_oversold_threshold - 5) bullishScore += 3;
     else if (rsi14 < userParams.rsi_oversold_threshold) bullishScore += 2;
@@ -474,9 +509,9 @@ serve(async (req) => {
     if (stochRsi < 20) bullishScore += 2;
     else if (stochRsi > 80) bearishScore += 2;
 
-    // MACD analysis (weight: 2)
-    if (macdHist > 0 && macd > macdSignal) bullishScore += 2;
-    else if (macdHist < 0 && macd < macdSignal) bearishScore += 2;
+    // MACD analysis (weight: 3 - increased importance)
+    if (macdIsBullish) bullishScore += 3;
+    else if (macdIsBearish) bearishScore += 3;
     
     // MACD momentum
     const prevMacdHist = macdSignalData[macdSignalData.length - 2];
@@ -524,11 +559,24 @@ serve(async (req) => {
     const confidence = totalScore > 0 ? (Math.max(bullishScore, bearishScore) / totalScore) * 100 : 50;
 
     let signal: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+    
     // Use personalized thresholds from learning engine
     if (bullishScore > bearishScore && confidence > (userParams.confidence_threshold - 2) && bullishScore >= userParams.min_bullish_score) {
-      signal = 'LONG';
+      // Don't signal LONG if MACD is clearly bearish
+      if (macdIsBearish && Math.abs(macdHist) > atr14 * 0.1) {
+        signal = 'NEUTRAL';
+        console.log('⚠️ Signal LONG rejected: MACD is bearish');
+      } else {
+        signal = 'LONG';
+      }
     } else if (bearishScore > bullishScore && confidence > (userParams.confidence_threshold - 2) && bearishScore >= userParams.min_bullish_score) {
-      signal = 'SHORT';
+      // Don't signal SHORT if MACD is clearly bullish
+      if (macdIsBullish && macdHist > atr14 * 0.1) {
+        signal = 'NEUTRAL';
+        console.log('⚠️ Signal SHORT rejected: MACD is bullish');
+      } else {
+        signal = 'SHORT';
+      }
     }
 
     // Multi-level TP/SL strategy based on ATR, trend strength, trade type, and target duration
@@ -610,40 +658,57 @@ serve(async (req) => {
     // Advanced leverage calculation with personalized max leverage and duration adjustment
     const volatilityPercent = (atr14 / currentPrice) * 100;
     const trendStrength = adx;
-    let suggestedLeverage = Math.min(2, userParams.max_leverage);
+    let baseLeverage = Math.min(2, userParams.max_leverage);
     
-    // Base leverage calculation
+    // Base leverage calculation based on volatility and confidence
     if (volatilityPercent < 0.8 && trendStrength > 25 && confidence > 70) {
-      suggestedLeverage = Math.min(10, userParams.max_leverage);
+      baseLeverage = Math.min(10, userParams.max_leverage);
     } else if (volatilityPercent < 1.5 && trendStrength > 20 && confidence > 65) {
-      suggestedLeverage = Math.min(7, userParams.max_leverage);
+      baseLeverage = Math.min(7, userParams.max_leverage);
     } else if (volatilityPercent < 2.5 && confidence > 60) {
-      suggestedLeverage = Math.min(5, userParams.max_leverage);
+      baseLeverage = Math.min(5, userParams.max_leverage);
     } else if (volatilityPercent < 4) {
-      suggestedLeverage = Math.min(3, userParams.max_leverage);
+      baseLeverage = Math.min(3, userParams.max_leverage);
     }
     
-    // Adjust leverage based on target duration
+    let suggestedLeverage = baseLeverage;
+    
+    // Adjust leverage based on trade type and target duration
     if (targetDuration > 0) {
-      if (targetDuration <= 60) {
-        // Very short duration (≤1h): can use higher leverage
-        suggestedLeverage = Math.min(suggestedLeverage + 3, userParams.max_leverage, 20);
+      if (targetDuration <= 15) {
+        // Ultra-scalp (≤15min): very high leverage possible
+        suggestedLeverage = Math.min(baseLeverage * 2.5, userParams.max_leverage, 25);
+      } else if (targetDuration <= 30) {
+        // Scalp (15-30min): high leverage
+        suggestedLeverage = Math.min(baseLeverage * 2, userParams.max_leverage, 20);
+      } else if (targetDuration <= 60) {
+        // Short scalp (30-60min): elevated leverage
+        suggestedLeverage = Math.min(baseLeverage * 1.7, userParams.max_leverage, 15);
       } else if (targetDuration <= 240) {
-        // Short duration (1-4h): slightly higher leverage
-        suggestedLeverage = Math.min(suggestedLeverage + 2, userParams.max_leverage, 15);
+        // Intraday (1-4h): moderate-high leverage
+        suggestedLeverage = Math.min(baseLeverage * 1.4, userParams.max_leverage, 12);
       } else if (targetDuration <= 1440) {
-        // Medium duration (4h-1d): baseline leverage
-        suggestedLeverage = Math.min(suggestedLeverage + 1, userParams.max_leverage, 10);
+        // Day trade (4h-1d): moderate leverage
+        suggestedLeverage = Math.min(baseLeverage * 1.2, userParams.max_leverage, 10);
       } else if (targetDuration <= 10080) {
-        // Long duration (1-7d): reduce leverage
-        suggestedLeverage = Math.min(suggestedLeverage, userParams.max_leverage, 7);
+        // Swing (1-7d): reduced leverage
+        suggestedLeverage = Math.min(baseLeverage * 0.8, userParams.max_leverage, 7);
       } else {
-        // Very long duration (>7d): significantly reduce leverage
-        suggestedLeverage = Math.min(suggestedLeverage - 1, userParams.max_leverage, 5);
+        // Long term (>7d): minimal leverage
+        suggestedLeverage = Math.min(baseLeverage * 0.5, userParams.max_leverage, 5);
       }
-      // Ensure minimum leverage of 1
-      suggestedLeverage = Math.max(1, suggestedLeverage);
+    } else if (tradeType === 'scalp') {
+      // If no duration but scalp type selected
+      suggestedLeverage = Math.min(baseLeverage * 2, userParams.max_leverage, 20);
+    } else if (tradeType === 'swing') {
+      suggestedLeverage = Math.min(baseLeverage * 1.2, userParams.max_leverage, 10);
+    } else {
+      // long term
+      suggestedLeverage = Math.min(baseLeverage * 0.7, userParams.max_leverage, 7);
     }
+    
+    // Ensure minimum leverage of 1
+    suggestedLeverage = Math.max(1, Math.round(suggestedLeverage));
 
     // Fetch 24h ticker
     const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
@@ -652,11 +717,43 @@ serve(async (req) => {
     // Detect chart patterns
     const detectedPatterns = detectPatterns(closes, highs, lows);
 
-    // Calculate time horizon based on historical data and liquidity
-    const timeHorizon = calculateTimeHorizon(closes, atr14, currentPrice, takeProfit, parseFloat(ticker.quoteVolume));
+    // Calculate time horizon based on target duration or historical data
+    const timeHorizon = calculateTimeHorizon(closes, atr14, currentPrice, takeProfit, parseFloat(ticker.quoteVolume), targetDuration);
     
-    // Calculate position sizing (example with $10,000 account and 1% risk)
-    const examplePositionSize = calculatePositionSize(10000, currentPrice, stopLoss, 1, suggestedLeverage);
+    // Fetch user settings for real position sizing
+    let userCapital = 10000; // default
+    let userRiskPercent = 1; // default
+    
+    if (supabaseClient && userId) {
+      try {
+        const { data: userSettings } = await supabaseClient
+          .from('user_settings')
+          .select('capital, risk_percent_per_trade')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (userSettings) {
+          userCapital = parseFloat(userSettings.capital);
+          userRiskPercent = parseFloat(userSettings.risk_percent_per_trade);
+        }
+      } catch (e) {
+        console.log('Could not fetch user settings, using defaults:', e);
+      }
+    }
+    
+    // Calculate position sizing with user's real capital and risk parameters
+    const realPositionSize = calculatePositionSize(userCapital, currentPrice, stopLoss, userRiskPercent, suggestedLeverage);
+    
+    // Calculate dollar amounts for each TP level
+    const tp1Amount = signal === 'LONG' 
+      ? (takeProfit1 - currentPrice) * realPositionSize.size
+      : (currentPrice - takeProfit1) * realPositionSize.size;
+    const tp2Amount = signal === 'LONG'
+      ? (takeProfit2 - currentPrice) * realPositionSize.size
+      : (currentPrice - takeProfit2) * realPositionSize.size;
+    const tp3Amount = signal === 'LONG'
+      ? (takeProfit3 - currentPrice) * realPositionSize.size
+      : (currentPrice - takeProfit3) * realPositionSize.size;
 
     // Fetch calendar events to adjust score
     let eventsImpact = 0;
@@ -766,8 +863,15 @@ serve(async (req) => {
       tradeType,
       targetDuration: targetDuration > 0 ? `${targetDuration} minutes` : 'auto',
       positionSizing: {
-        example: examplePositionSize,
-        note: "Basé sur un capital de $10,000 avec 1% de risque par trade"
+        capital: userCapital,
+        riskPercent: userRiskPercent,
+        positionSize: realPositionSize.size,
+        margin: realPositionSize.margin,
+        riskAmount: realPositionSize.risk,
+        tp1Profit: Math.round(tp1Amount * 100) / 100,
+        tp2Profit: Math.round(tp2Amount * 100) / 100,
+        tp3Profit: Math.round(tp3Amount * 100) / 100,
+        note: `Basé sur votre capital de $${userCapital.toFixed(2)} avec ${userRiskPercent}% de risque par trade`
       },
       recommendation: generateRecommendation(
         signal, 
