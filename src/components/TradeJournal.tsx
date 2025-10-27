@@ -33,7 +33,8 @@ const TradeJournal = ({ open, onOpenChange, analysisData }: TradeJournalProps) =
     entryPrice: analysisData.entryPrice.toString(),
     exitPrice: '',
     resultPercent: '',
-    resultAmount: ''
+    resultAmount: '',
+    exitType: 'full' // 'full', 'tp1', 'tp2', 'tp3'
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -139,6 +140,20 @@ const TradeJournal = ({ open, onOpenChange, analysisData }: TradeJournalProps) =
           </Card>
 
           <div className="space-y-3">
+            <div>
+              <Label>Type de sortie</Label>
+              <select
+                className="w-full p-2 border border-border rounded-md bg-background"
+                value={formData.exitType}
+                onChange={(e) => setFormData({ ...formData, exitType: e.target.value })}
+              >
+                <option value="full">Sortie complète</option>
+                <option value="tp1">Sortie partielle TP1 (50%)</option>
+                <option value="tp2">Sortie partielle TP2 (30%)</option>
+                <option value="tp3">Sortie partielle TP3 (20%)</option>
+              </select>
+            </div>
+
             <div>
               <Label>Prix de sortie ($)</Label>
               <Input

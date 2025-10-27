@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, TrendingUp, FileText } from "lucide-react";
 
 interface HeaderProps {
   userId?: string;
@@ -58,6 +58,14 @@ const Header = ({ userId }: HeaderProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => navigate('/market-analysis')} className="gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Analyse de Marché
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/trades')} className="gap-2">
+                <FileText className="w-4 h-4" />
+                Journal de Trades
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/profile")} className="gap-2">
                 <User className="w-4 h-4" />
                 Profil

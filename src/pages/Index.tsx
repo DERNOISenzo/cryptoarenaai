@@ -14,6 +14,7 @@ const Index = () => {
   const [selectedCrypto, setSelectedCrypto] = useState<string>("");
   const [cryptoName, setCryptoName] = useState<string>("");
   const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>('swing');
+  const [targetDuration, setTargetDuration] = useState<number>(0); // in minutes
   const [session, setSession] = useState<Session | null>(null);
   const navigate = useNavigate();
 
@@ -62,6 +63,7 @@ const Index = () => {
       crypto={selectedCrypto} 
       cryptoName={cryptoName} 
       tradeType={tradeType}
+      targetDuration={targetDuration}
       onBack={() => {
         setSelectedCrypto("");
         setCryptoName("");

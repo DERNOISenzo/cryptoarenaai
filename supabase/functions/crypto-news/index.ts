@@ -318,11 +318,11 @@ serve(async (req) => {
       news: topNews,
       totalArticles: allNews.length,
       filteredArticles: filteredNews.length,
-      sentiment: {
-        overall: overallSentiment,
-        score: avgScore,
-        criticalKeywords: allCriticalKeywords,
-        scoreAdjustment: Math.round(totalScoreAdjustment) // Average adjustment for crypto score
+      overallSentiment: {
+        sentiment: overallSentiment,
+        score: Math.round(avgScore * 100) / 100,
+        scoreAdjustment: Math.round(totalScoreAdjustment * 10) / 10,
+        criticalKeywords: [...new Set(allCriticalKeywords)]
       },
       sources: newsSources.map(s => s.name)
     }), {
@@ -337,7 +337,7 @@ serve(async (req) => {
       news: [],
       totalArticles: 0,
       filteredArticles: 0,
-      sentiment: { overall: 'neutre', score: 0, criticalKeywords: [] }
+      sentiment: { overall: 'neutre', score: 0, criticalKeywords: [], scoreAdjustment: 0 }
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -34,6 +34,7 @@ interface TradingDashboardProps {
   crypto: string;
   cryptoName: string;
   tradeType?: 'scalp' | 'swing' | 'long';
+  targetDuration?: number; // in minutes
   onBack: () => void;
 }
 

@@ -303,13 +303,13 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, tradeType = 'swing' } = await req.json();
+    const { symbol, tradeType = 'swing', targetDuration = 0 } = await req.json();
     
     if (!symbol) {
       throw new Error('Symbol is required');
     }
 
-    console.log('Analyzing:', symbol, '- Trade type:', tradeType);
+    console.log('Analyzing:', symbol, '- Trade type:', tradeType, '- Target duration:', targetDuration, 'min');
 
     // Get user's analysis parameters (if authenticated) from the Authorization header
     const authHeader = req.headers.get('Authorization');
@@ -531,13 +531,41 @@ serve(async (req) => {
       signal = 'SHORT';
     }
 
-    // Multi-level TP/SL strategy based on ATR, trend strength, and trade type
+    // Multi-level TP/SL strategy based on ATR, trend strength, trade type, and target duration
     const atrMultiplierSL = userParams.atr_multiplier_sl;
     const baseTPMultiplier = adx > 25 ? userParams.atr_multiplier_tp * 1.2 : userParams.atr_multiplier_tp;
     
-    // Adjust TP/SL multipliers based on trade type
+    // Adjust TP/SL multipliers based on trade type and target duration
     let tp1Mult, tp2Mult, tp3Mult, slMult;
-    if (tradeType === 'scalp') {
+    
+    // If targetDuration is specified, override trade type defaults
+    if (targetDuration > 0) {
+      if (targetDuration <= 30) {
+        // Ultra short (< 30 min)
+        tp1Mult = 0.3;
+        tp2Mult = 0.6;
+        tp3Mult = 1.0;
+        slMult = atrMultiplierSL * 0.5;
+      } else if (targetDuration <= 120) {
+        // Short (30-120 min)
+        tp1Mult = 0.5;
+        tp2Mult = 1.0;
+        tp3Mult = 1.5;
+        slMult = atrMultiplierSL * 0.7;
+      } else if (targetDuration <= 1440) {
+        // Medium (2-24h)
+        tp1Mult = 1.0;
+        tp2Mult = 2.0;
+        tp3Mult = 3.5;
+        slMult = atrMultiplierSL;
+      } else {
+        // Long (> 1 day)
+        tp1Mult = 1.5;
+        tp2Mult = 3.0;
+        tp3Mult = 5.0;
+        slMult = atrMultiplierSL * 1.5;
+      }
+    } else if (tradeType === 'scalp') {
       // Scalp: tighter targets, quick exits
       tp1Mult = 0.5;
       tp2Mult = 1.0;
@@ -607,9 +635,94 @@ serve(async (req) => {
     // Calculate position sizing (example with $10,000 account and 1% risk)
     const examplePositionSize = calculatePositionSize(10000, currentPrice, stopLoss, 1, suggestedLeverage);
 
+    // Fetch calendar events to adjust score
+    let eventsImpact = 0;
+    try {
+      const baseName = symbol.replace('USDT', '');
+      const eventsResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/calendar-events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
+        },
+        body: JSON.stringify({ symbols: [baseName] })
+      });
+
+      if (eventsResponse.ok) {
+        const eventsData = await eventsResponse.json();
+        if (eventsData.summary) {
+          // High impact events within 7 days can boost confidence
+          if (eventsData.summary.highImpactEvents > 0) {
+            eventsImpact = Math.min(10, eventsData.summary.highImpactEvents * 5);
+            console.log(`📅 Events impact: +${eventsImpact} points`);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch events:', e);
+    }
+
+    // Fetch fundamental analysis score
+    let fundamentalScore = 0;
+    try {
+      const fundamentalResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/fundamental-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
+        },
+        body: JSON.stringify({ symbol })
+      });
+
+      if (fundamentalResponse.ok) {
+        const fundData = await fundamentalResponse.json();
+        if (fundData.fundamentalScore) {
+          // Scale fundamental score (0-100) to impact (0-15)
+          fundamentalScore = (fundData.fundamentalScore / 100) * 15;
+          console.log(`🔍 Fundamental score: ${fundData.fundamentalScore}/100 (+${fundamentalScore.toFixed(1)} points)`);
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch fundamental analysis:', e);
+    }
+
+    // Fetch news sentiment
+    let newsImpact = 0;
+    try {
+      const baseName = symbol.replace('USDT', '');
+      const newsResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/crypto-news`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
+        },
+        body: JSON.stringify({ symbol, baseAsset: baseName })
+      });
+
+      if (newsResponse.ok) {
+        const newsData = await newsResponse.json();
+        if (newsData.overallSentiment) {
+          newsImpact = newsData.overallSentiment.scoreAdjustment || 0;
+          console.log(`📰 News sentiment impact: ${newsImpact > 0 ? '+' : ''}${newsImpact} points`);
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch news:', e);
+    }
+
+    // Adjust final confidence with external factors
+    const adjustedConfidence = Math.min(95, Math.max(30, confidence + eventsImpact + fundamentalScore + newsImpact));
+
     const analysis = {
       signal,
-      confidence: Math.round(confidence * 10) / 10,
+      confidence: Math.round(adjustedConfidence * 10) / 10,
+      baseConfidence: Math.round(confidence * 10) / 10,
+      externalFactors: {
+        eventsImpact,
+        fundamentalScore,
+        newsImpact,
+        totalAdjustment: eventsImpact + fundamentalScore + newsImpact
+      },
       leverage: suggestedLeverage,
       price: currentPrice,
       change24h: parseFloat(ticker.priceChangePercent),
@@ -628,13 +741,14 @@ serve(async (req) => {
       patterns: detectedPatterns,
       timeHorizon,
       tradeType,
+      targetDuration: targetDuration > 0 ? `${targetDuration} minutes` : 'auto',
       positionSizing: {
         example: examplePositionSize,
         note: "Basé sur un capital de $10,000 avec 1% de risque par trade"
       },
       recommendation: generateRecommendation(
         signal, 
-        confidence, 
+        adjustedConfidence, 
         rsi14, 
         stochRsi,
         macdHist, 
