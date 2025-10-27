@@ -315,11 +315,19 @@ function calculatePositionSize(
   const stopDistance = Math.abs(entryPrice - stopLoss);
   const stopDistancePercent = stopDistance / entryPrice;
   
-  const positionSize = riskAmount / (stopDistancePercent * entryPrice);
-  const margin = (positionSize * entryPrice) / leverage;
+  // Calculate position size based on risk
+  let positionSize = riskAmount / (stopDistancePercent * entryPrice);
+  let margin = (positionSize * entryPrice) / leverage;
+  
+  // CRITICAL: Ensure margin never exceeds available capital
+  if (margin > accountBalance * 0.95) {
+    // Adjust position size so margin = 95% of capital max
+    margin = accountBalance * 0.95;
+    positionSize = (margin * leverage) / entryPrice;
+  }
   
   return {
-    size: Math.round(positionSize * 1000) / 1000,
+    size: Math.round(positionSize * 1000000) / 1000000,
     margin: Math.round(margin * 100) / 100,
     risk: riskAmount
   };

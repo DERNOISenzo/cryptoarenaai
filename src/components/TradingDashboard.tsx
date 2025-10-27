@@ -320,19 +320,23 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">% du Capital:</span>
-                  <div className="flex gap-2 flex-wrap">
-                    {[25, 50, 75, 100].map((percent) => (
-                      <Button
-                        key={percent}
-                        variant={capitalPercent === percent ? 'default' : 'outline'}
-                        onClick={() => setCapitalPercent(percent)}
-                        size="sm"
-                      >
-                        {percent}%
-                      </Button>
-                    ))}
-                  </div>
+                  <label htmlFor="capitalPercent" className="text-sm font-medium">% du Capital:</label>
+                  <input
+                    id="capitalPercent"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={capitalPercent}
+                    onChange={(e) => setCapitalPercent(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                    className="w-20 px-3 py-1 text-sm border border-border rounded-md bg-background"
+                  />
+                  <Button
+                    onClick={loadAnalysis}
+                    size="sm"
+                    variant="default"
+                  >
+                    Enregistrer
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -616,11 +620,11 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                     {analysis.indicators.rsi.toFixed(1)}
                   </Badge>
                 </div>
-                <div className="w-full h-4 bg-muted rounded-full overflow-hidden shadow-inner">
+                <div className="w-full h-4 bg-muted/40 rounded-full overflow-hidden shadow-inner">
                   <div 
-                    className={`h-full transition-all duration-500 ${
-                      analysis.indicators.rsi < 30 ? "bg-gradient-to-r from-success to-success/70" :
-                      analysis.indicators.rsi > 70 ? "bg-gradient-to-r from-danger to-danger/70" : "bg-gradient-to-r from-warning to-warning/70"
+                    className={`h-full transition-all duration-500 shadow-lg ${
+                      analysis.indicators.rsi < 30 ? "bg-gradient-to-r from-emerald-500 to-emerald-400" :
+                      analysis.indicators.rsi > 70 ? "bg-gradient-to-r from-rose-500 to-rose-400" : "bg-gradient-to-r from-amber-500 to-amber-400"
                     }`}
                     style={{ width: `${analysis.indicators.rsi}%` }}
                   />
