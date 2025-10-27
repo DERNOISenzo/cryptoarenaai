@@ -64,13 +64,14 @@ interface Analysis {
   };
 }
 
-const TradingDashboard = ({ crypto, cryptoName, tradeType = 'swing', onBack }: TradingDashboardProps) => {
+const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 'swing', onBack }: TradingDashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [news, setNews] = useState<any[]>([]);
   const [tweets, setTweets] = useState<any[]>([]);
   const [userId, setUserId] = useState<string>("");
   const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
+  const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>(initialTradeType);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -184,11 +185,42 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType = 'swing', onBack }: T
       <div className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <Button variant="outline" onClick={onBack} className="gap-2">
               <ArrowLeft className="w-4 h-4" />
               Retour
             </Button>
+            
+            {/* Trade Type Selector */}
+            <Card className="p-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium">Type de Trade:</span>
+                <div className="flex gap-2">
+                  <Button
+                    variant={tradeType === 'scalp' ? 'default' : 'outline'}
+                    onClick={() => setTradeType('scalp')}
+                    size="sm"
+                  >
+                    🎯 Scalp
+                  </Button>
+                  <Button
+                    variant={tradeType === 'swing' ? 'default' : 'outline'}
+                    onClick={() => setTradeType('swing')}
+                    size="sm"
+                  >
+                    📊 Swing
+                  </Button>
+                  <Button
+                    variant={tradeType === 'long' ? 'default' : 'outline'}
+                    onClick={() => setTradeType('long')}
+                    size="sm"
+                  >
+                    💎 Long Terme
+                  </Button>
+                </div>
+              </div>
+            </Card>
+            
             <Button onClick={loadAnalysis} className="gap-2 bg-primary">
               <Sparkles className="w-4 h-4" />
               Actualiser

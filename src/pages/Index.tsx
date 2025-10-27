@@ -42,6 +42,21 @@ const Index = () => {
     await supabase.auth.signOut();
   };
 
+  // Handle URL parameters for direct navigation with trade type
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlTradeType = params.get('tradeType') as 'scalp' | 'swing' | 'long' | null;
+    const urlCrypto = params.get('crypto');
+    
+    if (urlTradeType) {
+      setTradeType(urlTradeType);
+    }
+    if (urlCrypto) {
+      setSelectedCrypto(urlCrypto);
+      setStarted(true);
+    }
+  }, []);
+
   if (selectedCrypto) {
     return <TradingDashboard 
       crypto={selectedCrypto} 
