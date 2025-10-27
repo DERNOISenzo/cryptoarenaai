@@ -10,31 +10,63 @@ interface NewsArticle {
   url: string;
   source: string;
   published: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
+  sentiment: 'très positif' | 'positif' | 'neutre' | 'négatif' | 'très négatif';
+  sentimentScore: number; // -2 à +2
   keywords: string[];
+  criticalKeywords: string[];
 }
 
-// Simple sentiment analysis based on keywords
-function analyzeSentiment(text: string): 'positive' | 'negative' | 'neutral' {
+// Advanced sentiment analysis with critical keyword detection
+function analyzeSentiment(text: string): { sentiment: NewsArticle['sentiment']; score: number; criticalKeywords: string[] } {
   const lowerText = text.toLowerCase();
   
-  const positiveWords = ['hausse', 'monte', 'gain', 'bull', 'rallye', 'surge', 'rise', 'up', 'pump', 'breakthrough', 'adoption', 'innovation'];
-  const negativeWords = ['baisse', 'chute', 'perte', 'bear', 'crash', 'drop', 'down', 'dump', 'scam', 'hack', 'regulation'];
+  // Critical keywords (higher weight)
+  const criticalPositive = ['listing', 'partnership', 'partenariat', 'upgrade', 'mainnet', 'adoption massive', 'institutional', 'breakthrough'];
+  const criticalNegative = ['hack', 'scam', 'rug pull', 'exploit', 'regulation', 'ban', 'lawsuit', 'fraud', 'ponzi'];
   
-  let positiveCount = 0;
-  let negativeCount = 0;
+  // Standard keywords
+  const positiveWords = ['hausse', 'monte', 'gain', 'bull', 'rallye', 'surge', 'rise', 'up', 'pump', 'innovation', 'growth', 'success', 'profit'];
+  const negativeWords = ['baisse', 'chute', 'perte', 'bear', 'crash', 'drop', 'down', 'dump', 'decline', 'loss', 'risk', 'warning'];
   
+  let score = 0;
+  const foundCriticalKeywords: string[] = [];
+  
+  // Check critical keywords (weight: 2)
+  criticalPositive.forEach(word => {
+    if (lowerText.includes(word)) {
+      score += 2;
+      foundCriticalKeywords.push(word);
+    }
+  });
+  
+  criticalNegative.forEach(word => {
+    if (lowerText.includes(word)) {
+      score -= 2;
+      foundCriticalKeywords.push(word);
+    }
+  });
+  
+  // Check standard keywords (weight: 1)
   positiveWords.forEach(word => {
-    if (lowerText.includes(word)) positiveCount++;
+    if (lowerText.includes(word)) score += 1;
   });
   
   negativeWords.forEach(word => {
-    if (lowerText.includes(word)) negativeCount++;
+    if (lowerText.includes(word)) score -= 1;
   });
   
-  if (positiveCount > negativeCount) return 'positive';
-  if (negativeCount > positiveCount) return 'negative';
-  return 'neutral';
+  // Determine sentiment category
+  let sentiment: NewsArticle['sentiment'];
+  if (score >= 3) sentiment = 'très positif';
+  else if (score >= 1) sentiment = 'positif';
+  else if (score <= -3) sentiment = 'très négatif';
+  else if (score <= -1) sentiment = 'négatif';
+  else sentiment = 'neutre';
+  
+  // Normalize score to -2 to +2 range
+  const normalizedScore = Math.max(-2, Math.min(2, score / 3));
+  
+  return { sentiment, score: normalizedScore, criticalKeywords: foundCriticalKeywords };
 }
 
 // Extract keywords from text
@@ -52,7 +84,7 @@ function extractKeywords(text: string): string[] {
   return keywords;
 }
 
-// Fetch RSS feed
+// Fetch RSS feed with HTML fallback
 async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticle[]> {
   try {
     const response = await fetch(url, {
@@ -61,7 +93,10 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
       }
     });
     
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.log(`RSS failed for ${sourceName}, trying HTML fallback...`);
+      return await fetchHTMLFallback(url, sourceName);
+    }
     
     const xmlText = await response.text();
     
@@ -80,13 +115,17 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
         const description = descMatch ? descMatch[2].trim() : '';
         const fullText = title + ' ' + description;
         
+        const { sentiment, score, criticalKeywords } = analyzeSentiment(fullText);
+        
         articles.push({
           title: title.replace(/<[^>]+>/g, ''), // Strip HTML tags
           url: linkMatch[2].trim(),
           source: sourceName,
           published: pubDateMatch ? pubDateMatch[1] : new Date().toISOString(),
-          sentiment: analyzeSentiment(fullText),
-          keywords: extractKeywords(fullText)
+          sentiment,
+          sentimentScore: score,
+          keywords: extractKeywords(fullText),
+          criticalKeywords
         });
       }
     });
@@ -94,6 +133,61 @@ async function fetchRSSFeed(url: string, sourceName: string): Promise<NewsArticl
     return articles;
   } catch (error) {
     console.error(`Error fetching ${sourceName}:`, error);
+    return await fetchHTMLFallback(url, sourceName);
+  }
+}
+
+// HTML fallback parser for when RSS fails
+async function fetchHTMLFallback(url: string, sourceName: string): Promise<NewsArticle[]> {
+  try {
+    const baseUrl = new URL(url).origin;
+    const response = await fetch(baseUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    
+    if (!response.ok) return [];
+    
+    const htmlText = await response.text();
+    const articles: NewsArticle[] = [];
+    
+    // Extract article titles using common HTML patterns
+    const titlePatterns = [
+      /<h[123][^>]*class="[^"]*title[^"]*"[^>]*>(.*?)<\/h[123]>/gi,
+      /<a[^>]*class="[^"]*headline[^"]*"[^>]*>(.*?)<\/a>/gi,
+      /<h[123][^>]*>(.*?)<\/h[123]>/gi
+    ];
+    
+    const foundTitles = new Set<string>();
+    
+    titlePatterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(htmlText)) !== null && foundTitles.size < 5) {
+        const title = match[1].replace(/<[^>]+>/g, '').trim();
+        if (title.length > 20 && title.length < 200) {
+          foundTitles.add(title);
+        }
+      }
+    });
+    
+    foundTitles.forEach(title => {
+      const { sentiment, score, criticalKeywords } = analyzeSentiment(title);
+      articles.push({
+        title,
+        url: baseUrl,
+        source: `${sourceName} (HTML)`,
+        published: new Date().toISOString(),
+        sentiment,
+        sentimentScore: score,
+        keywords: extractKeywords(title),
+        criticalKeywords
+      });
+    });
+    
+    return articles;
+  } catch (error) {
+    console.error(`HTML fallback failed for ${sourceName}:`, error);
     return [];
   }
 }
@@ -139,28 +233,31 @@ serve(async (req) => {
 
     // Sort by sentiment and date
     filteredNews.sort((a, b) => {
-      const sentimentScore = { positive: 3, neutral: 2, negative: 1 };
-      const scoreA = sentimentScore[a.sentiment];
-      const scoreB = sentimentScore[b.sentiment];
-      
-      if (scoreA !== scoreB) return scoreB - scoreA;
+      // Sort by sentiment score first (higher is better)
+      if (a.sentimentScore !== b.sentimentScore) {
+        return b.sentimentScore - a.sentimentScore;
+      }
+      // Then by date (newer first)
       return new Date(b.published).getTime() - new Date(a.published).getTime();
     });
 
     // Take top 15 articles
     const topNews = filteredNews.slice(0, 15);
 
-    // Calculate overall sentiment
-    const sentimentCounts = topNews.reduce((acc, article) => {
-      acc[article.sentiment]++;
-      return acc;
-    }, { positive: 0, neutral: 0, negative: 0 });
+    // Calculate overall sentiment with weighted score
+    const avgScore = topNews.length > 0 
+      ? topNews.reduce((sum, article) => sum + article.sentimentScore, 0) / topNews.length
+      : 0;
+    
+    let overallSentiment: NewsArticle['sentiment'];
+    if (avgScore >= 1) overallSentiment = 'très positif';
+    else if (avgScore >= 0.3) overallSentiment = 'positif';
+    else if (avgScore <= -1) overallSentiment = 'très négatif';
+    else if (avgScore <= -0.3) overallSentiment = 'négatif';
+    else overallSentiment = 'neutre';
 
-    const overallSentiment = sentimentCounts.positive > sentimentCounts.negative 
-      ? 'positive' 
-      : sentimentCounts.negative > sentimentCounts.positive 
-        ? 'negative' 
-        : 'neutral';
+    // Collect all critical keywords
+    const allCriticalKeywords = topNews.flatMap(article => article.criticalKeywords);
 
     return new Response(JSON.stringify({ 
       news: topNews,
@@ -168,7 +265,8 @@ serve(async (req) => {
       filteredArticles: filteredNews.length,
       sentiment: {
         overall: overallSentiment,
-        breakdown: sentimentCounts
+        score: avgScore,
+        criticalKeywords: allCriticalKeywords
       },
       sources: newsSources.map(s => s.name)
     }), {
@@ -183,7 +281,7 @@ serve(async (req) => {
       news: [],
       totalArticles: 0,
       filteredArticles: 0,
-      sentiment: { overall: 'neutral', breakdown: { positive: 0, neutral: 0, negative: 0 } }
+      sentiment: { overall: 'neutre', score: 0, criticalKeywords: [] }
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

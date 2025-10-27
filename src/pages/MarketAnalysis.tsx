@@ -26,8 +26,11 @@ interface Opportunity {
 
 const MarketAnalysis = () => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [filteredOpportunities, setFilteredOpportunities] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string>("");
+  const [filterStrategy, setFilterStrategy] = useState<string>("all");
+  const [filterMinScore, setFilterMinScore] = useState<number>(0);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -46,6 +49,23 @@ const MarketAnalysis = () => {
   useEffect(() => {
     loadMarketAnalysis();
   }, []);
+
+  useEffect(() => {
+    // Apply filters
+    let filtered = opportunities;
+    
+    if (filterStrategy !== "all") {
+      filtered = filtered.filter(opp => 
+        opp.strategy.toLowerCase().includes(filterStrategy.toLowerCase())
+      );
+    }
+    
+    if (filterMinScore > 0) {
+      filtered = filtered.filter(opp => opp.score >= filterMinScore);
+    }
+    
+    setFilteredOpportunities(filtered);
+  }, [opportunities, filterStrategy, filterMinScore]);
 
   const loadMarketAnalysis = async () => {
     setLoading(true);
@@ -120,8 +140,46 @@ const MarketAnalysis = () => {
             </TabsList>
 
             <TabsContent value="opportunities" className="space-y-6 mt-6">
+              {/* Filters */}
+              <Card className="p-4">
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Stratégie:</label>
+                    <select 
+                      value={filterStrategy}
+                      onChange={(e) => setFilterStrategy(e.target.value)}
+                      className="w-full p-2 rounded-md border bg-background"
+                    >
+                      <option value="all">Toutes</option>
+                      <option value="dca">DCA Recovery</option>
+                      <option value="swing">Swing Trading</option>
+                      <option value="momentum">Momentum</option>
+                      <option value="long">Long Terme</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Score minimum:</label>
+                    <select 
+                      value={filterMinScore}
+                      onChange={(e) => setFilterMinScore(Number(e.target.value))}
+                      className="w-full p-2 rounded-md border bg-background"
+                    >
+                      <option value="0">Tous</option>
+                      <option value="60">60+</option>
+                      <option value="70">70+</option>
+                      <option value="80">80+</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <div className="text-sm text-muted-foreground">
+                      <span className="font-bold text-primary">{filteredOpportunities.length}</span> opportunité(s) affichée(s)
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
               <div className="grid gap-6">
-            {opportunities.map((opp, idx) => (
+            {filteredOpportunities.map((opp, idx) => (
               <Card key={idx} className="p-6 hover:shadow-xl transition-shadow">
                 <div className="grid md:grid-cols-3 gap-6">
                   {/* Left: Basic Info */}
@@ -199,12 +257,14 @@ const MarketAnalysis = () => {
             ))}
               </div>
 
-              {opportunities.length === 0 && (
+              {filteredOpportunities.length === 0 && (
                 <Card className="p-12 text-center">
                   <Brain className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-xl font-semibold mb-2">Aucune opportunité détectée</h3>
                   <p className="text-muted-foreground">
-                    Le marché ne présente pas d'opportunités majeures actuellement.
+                    {opportunities.length === 0 
+                      ? "Le marché ne présente pas d'opportunités majeures actuellement."
+                      : "Aucune opportunité ne correspond aux filtres sélectionnés."}
                   </p>
                 </Card>
               )}

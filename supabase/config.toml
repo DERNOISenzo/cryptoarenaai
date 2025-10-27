@@ -4,4 +4,6 @@ project_id = "fzkxeouvmkfvbtpzxeka"
 [functions.telegram-webhook]
 verify_jwt = false
 
+[functions.calendar-events]
+
 [functions.learning-engine]

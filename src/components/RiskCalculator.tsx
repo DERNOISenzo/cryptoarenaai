@@ -32,17 +32,18 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
     stopLoss: initialData?.stopLoss?.toString() || '',
     takeProfit: initialData?.takeProfit?.toString() || '',
     leverage: initialData?.leverage?.toString() || '1',
-    capital: '1000'
+    capital: '10000',
+    riskPercent: '1'
   });
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const calculateRisk = async () => {
-    if (!formData.entryPrice || !formData.stopLoss || !formData.takeProfit || !formData.leverage || !formData.capital) {
+    if (!formData.entryPrice || !formData.stopLoss || !formData.capital || !formData.riskPercent) {
       toast({
         title: "⚠️ Champs manquants",
-        description: "Veuillez remplir tous les champs",
+        description: "Veuillez remplir tous les champs requis",
         variant: "destructive"
       });
       return;
@@ -51,12 +52,19 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('risk-calculator', {
-        body: formData
+        body: {
+          ...formData,
+          takeProfit: formData.takeProfit || undefined
+        }
       });
 
       if (error) throw error;
 
       setResult(data);
+      toast({
+        title: "✅ Calcul terminé",
+        description: "Votre plan de gestion du risque est prêt",
+      });
     } catch (error) {
       console.error('Risk calculator error:', error);
       toast({
@@ -95,13 +103,25 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
               />
             </div>
             <div>
-              <Label>Capital ($)</Label>
+              <Label>Capital Total ($)</Label>
               <Input
                 type="number"
                 step="100"
                 value={formData.capital}
                 onChange={(e) => setFormData({ ...formData, capital: e.target.value })}
-                placeholder="1000"
+                placeholder="10000"
+              />
+            </div>
+            <div>
+              <Label>Risque par Trade (%)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="5"
+                value={formData.riskPercent}
+                onChange={(e) => setFormData({ ...formData, riskPercent: e.target.value })}
+                placeholder="1"
               />
             </div>
             <div>
@@ -115,13 +135,13 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
               />
             </div>
             <div>
-              <Label>Take Profit ($)</Label>
+              <Label>Take Profit ($) - Optionnel</Label>
               <Input
                 type="number"
                 step="0.01"
                 value={formData.takeProfit}
                 onChange={(e) => setFormData({ ...formData, takeProfit: e.target.value })}
-                placeholder="0.00"
+                placeholder="Optionnel"
               />
             </div>
             <div className="col-span-2">
@@ -143,6 +163,32 @@ const RiskCalculator = ({ open, onOpenChange, initialData }: RiskCalculatorProps
 
           {result && (
             <div className="space-y-4 pt-4 border-t">
+              <Card className="p-4 bg-primary/10 border-primary">
+                <h4 className="font-semibold mb-3">📊 Taille de Position Recommandée</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Montant à risquer ({result.riskPercent}%):</span>
+                    <span className="font-bold">${result.riskAmount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Taille de position:</span>
+                    <span className="font-bold text-primary">${result.positionSize}</span>
+                  </div>
+                  {result.multiExitPlan && (
+                    <div className="mt-3 p-3 bg-secondary/30 rounded">
+                      <p className="text-sm font-semibold mb-2">Plan de sortie progressif:</p>
+                      <ul className="text-sm space-y-1">
+                        {result.multiExitPlan.map((exit: any, idx: number) => (
+                          <li key={idx}>
+                            • {exit.percent}% à TP{idx + 1} (${exit.price}) = ${exit.amount}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
               <div className="flex items-center justify-between">
                 <span className="font-semibold">Type de position:</span>
                 <Badge variant={result.isLong ? "default" : "destructive"}>
