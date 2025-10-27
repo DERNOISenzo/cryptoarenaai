@@ -98,6 +98,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
   const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>(initialTradeType);
   const [targetDuration, setTargetDuration] = useState<number>(0);
+  const [userPreferences, setUserPreferences] = useState<{style: 'scalp' | 'swing' | 'long', loaded: boolean}>({style: 'swing', loaded: false});
   const { toast } = useToast();
   const navigate = useNavigate();
   
@@ -131,8 +132,14 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   
   useEffect(() => {
     const options = getDurationOptions();
-    if (options.length > 0) {
+    if (options.length > 0 && targetDuration === 0) {
       setTargetDuration(options[0].value);
+    } else if (options.length > 0) {
+      // Vérifier que targetDuration est dans les options disponibles
+      const validOption = options.find(opt => opt.value === targetDuration);
+      if (!validOption) {
+        setTargetDuration(options[0].value);
+      }
     }
   }, [tradeType]);
 
@@ -141,6 +148,23 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         setUserId(session.user.id);
+        
+        // Charger les préférences de l'utilisateur
+        try {
+          const { data: settings } = await supabase
+            .from('user_settings')
+            .select('preferred_trade_style')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+          
+          if (settings && settings.preferred_trade_style && !userPreferences.loaded) {
+            const style = settings.preferred_trade_style as 'scalp' | 'swing' | 'long';
+            setTradeType(style);
+            setUserPreferences({style, loaded: true});
+          }
+        } catch (error) {
+          console.error('Error loading user preferences:', error);
+        }
       } else {
         navigate("/auth");
       }
@@ -407,164 +431,172 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                   </div>
                 </div>
               </Card>
-
-              {/* Daily Risk Status */}
-              {analysis.positionSizing?.dailyRiskStatus && (
-                <Card className={`p-4 border-2 ${
-                  analysis.positionSizing.dailyRiskStatus.status === 'WARNING' 
-                    ? 'border-warning/50 bg-warning/10' 
-                    : 'border-success/30 bg-success/5'
-                }`}>
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className={`w-5 h-5 mt-0.5 ${
-                      analysis.positionSizing.dailyRiskStatus.status === 'WARNING' 
-                        ? 'text-warning' 
-                        : 'text-success'
-                    }`} />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm mb-2">État du Risque Journalier</h4>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <p className="text-muted-foreground">Perte actuelle</p>
-                          <p className="font-bold">${analysis.positionSizing.dailyRiskStatus.currentLoss.toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Limite journalière</p>
-                          <p className="font-bold">${analysis.positionSizing.dailyRiskStatus.maxLoss.toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Risque ce trade</p>
-                          <p className="font-bold text-warning">${analysis.positionSizing.dailyRiskStatus.tradeRisk.toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Reste disponible</p>
-                          <p className="font-bold text-success">${analysis.positionSizing.dailyRiskStatus.remaining.toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              <Card className="p-6 bg-secondary/30 border-border">
-                <div className="flex items-start gap-3">
-                  <Target className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="space-y-3 text-sm flex-1">
-                    <h3 className="font-semibold text-base mb-2">Plan de Sortie avec Montants en $</h3>
-                    
-                    {analysis.takeProfit1 && analysis.takeProfit2 && analysis.takeProfit3 && analysis.positionSizing ? (
-                      <>
-                        <div className="flex justify-between items-start p-3 bg-success/10 rounded border border-success/20">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold">TP1 (50%):</span>
-                              <span className="font-mono">${analysis.takeProfit1.toFixed(4)}</span>
-                            </div>
-                            {analysis.positionSizing.exitPlan && (
-                              <>
-                                <p className="text-success font-bold text-lg">
-                                  +${analysis.positionSizing.exitPlan.tp1.profit.toFixed(2)}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {analysis.positionSizing.exitPlan.tp1.action}
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between items-start p-3 bg-success/10 rounded border border-success/20">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold">TP2 (30%):</span>
-                              <span className="font-mono">${analysis.takeProfit2.toFixed(4)}</span>
-                            </div>
-                            {analysis.positionSizing.exitPlan && (
-                              <>
-                                <p className="text-success font-bold text-lg">
-                                  +${analysis.positionSizing.exitPlan.tp2.profit.toFixed(2)}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {analysis.positionSizing.exitPlan.tp2.action}
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between items-start p-3 bg-success/10 rounded border border-success/20">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold">TP3 (20%):</span>
-                              <span className="font-mono">${analysis.takeProfit3.toFixed(4)}</span>
-                            </div>
-                            {analysis.positionSizing.exitPlan && (
-                              <>
-                                <p className="text-success font-bold text-lg">
-                                  +${analysis.positionSizing.exitPlan.tp3.profit.toFixed(2)}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {analysis.positionSizing.exitPlan.tp3.action}
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between items-center p-3 bg-danger/10 rounded border border-danger/20">
-                          <span className="font-semibold">Stop Loss:</span>
-                          <div className="text-right">
-                            <span className="font-mono">${analysis.stopLoss.toFixed(4)}</span>
-                            {analysis.positionSizing && (
-                              <p className="text-danger font-bold">
-                                -${analysis.positionSizing.riskAmount.toFixed(2)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {analysis.positionSizing && (
-                          <div className="p-3 bg-primary/10 rounded border border-primary/20 mt-4">
-                            <div className="flex items-start gap-2 mb-2">
-                              <DollarSign className="w-4 h-4 text-primary mt-0.5" />
-                              <p className="text-xs font-semibold">Taille de Position</p>
-                            </div>
-                            <p className="text-sm">
-                              <span className="font-mono font-bold">{analysis.positionSizing.positionSize.toFixed(4)}</span> {crypto.replace('USDT', '')}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Marge requise: ${analysis.positionSizing.margin.toFixed(2)} (Levier {analysis.leverage}x)
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              {analysis.positionSizing.note}
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-muted-foreground">Aucun niveau de sortie défini pour ce signal</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
             </div>
           </div>
         </Card>
 
+          {/* Daily Risk Status - Full Width */}
+          {analysis.positionSizing?.dailyRiskStatus && (
+            <Card className={`p-6 border-2 ${
+              analysis.positionSizing.dailyRiskStatus.status === 'WARNING' 
+                ? 'border-warning/50 bg-warning/10' 
+                : 'border-success/30 bg-success/5'
+            }`}>
+              <div className="flex items-start gap-4">
+                <AlertTriangle className={`w-6 h-6 mt-0.5 ${
+                  analysis.positionSizing.dailyRiskStatus.status === 'WARNING' 
+                    ? 'text-warning' 
+                    : 'text-success'
+                }`} />
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg mb-4">État du Risque Journalier</h3>
+                  <div className="grid md:grid-cols-4 gap-6">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Perte actuelle</p>
+                      <p className="text-2xl font-bold">${analysis.positionSizing.dailyRiskStatus.currentLoss.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Limite journalière</p>
+                      <p className="text-2xl font-bold">${analysis.positionSizing.dailyRiskStatus.maxLoss.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Risque ce trade</p>
+                      <p className="text-2xl font-bold text-warning">${analysis.positionSizing.dailyRiskStatus.tradeRisk.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Reste disponible</p>
+                      <p className="text-2xl font-bold text-success">${analysis.positionSizing.dailyRiskStatus.remaining.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Exit Plan - Full Width */}
+          <Card className="p-6 bg-secondary/30 border-border">
+            <div className="flex items-start gap-3">
+              <Target className="w-6 h-6 text-primary mt-1 flex-shrink-0" />
+              <div className="space-y-4 flex-1">
+                <h3 className="font-bold text-xl mb-4">Plan de Sortie avec Montants en $</h3>
+                
+                {analysis.takeProfit1 && analysis.takeProfit2 && analysis.takeProfit3 && analysis.positionSizing ? (
+                  <div className="grid md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-success/10 rounded-lg border border-success/20">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-sm">TP1 (50%)</span>
+                        </div>
+                        <p className="text-xl font-mono font-bold">${analysis.takeProfit1.toFixed(4)}</p>
+                        {analysis.positionSizing.exitPlan && (
+                          <>
+                            <p className="text-success font-bold text-2xl">
+                              +${analysis.positionSizing.exitPlan.tp1.profit.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {analysis.positionSizing.exitPlan.tp1.action}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-success/10 rounded-lg border border-success/20">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-sm">TP2 (30%)</span>
+                        </div>
+                        <p className="text-xl font-mono font-bold">${analysis.takeProfit2.toFixed(4)}</p>
+                        {analysis.positionSizing.exitPlan && (
+                          <>
+                            <p className="text-success font-bold text-2xl">
+                              +${analysis.positionSizing.exitPlan.tp2.profit.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {analysis.positionSizing.exitPlan.tp2.action}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-success/10 rounded-lg border border-success/20">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-sm">TP3 (20%)</span>
+                        </div>
+                        <p className="text-xl font-mono font-bold">${analysis.takeProfit3.toFixed(4)}</p>
+                        {analysis.positionSizing.exitPlan && (
+                          <>
+                            <p className="text-success font-bold text-2xl">
+                              +${analysis.positionSizing.exitPlan.tp3.profit.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {analysis.positionSizing.exitPlan.tp3.action}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-danger/10 rounded-lg border border-danger/20">
+                      <div className="space-y-2">
+                        <span className="font-semibold text-sm">Stop Loss</span>
+                        <p className="text-xl font-mono font-bold">${analysis.stopLoss.toFixed(4)}</p>
+                        {analysis.positionSizing && (
+                          <p className="text-danger font-bold text-2xl">
+                            -${analysis.positionSizing.riskAmount.toFixed(2)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {analysis.positionSizing && (
+                      <div className="md:col-span-4 p-4 bg-primary/10 rounded-lg border border-primary/20">
+                        <div className="flex items-start gap-2 mb-2">
+                          <DollarSign className="w-5 h-5 text-primary mt-0.5" />
+                          <p className="font-semibold">Taille de Position</p>
+                        </div>
+                        <div className="grid md:grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Position</p>
+                            <p className="text-lg font-mono font-bold">{analysis.positionSizing.positionSize.toFixed(4)} {crypto.replace('USDT', '')}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Marge requise</p>
+                            <p className="text-lg font-bold">${analysis.positionSizing.margin.toFixed(2)} (Levier {analysis.leverage}x)</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Note</p>
+                            <p className="text-sm">{analysis.positionSizing.note}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">Aucun niveau de sortie défini pour ce signal</p>
+                )}
+              </div>
+            </div>
+          </Card>
           
           <div className="grid md:grid-cols-4 gap-4">
-            <Card className="p-6">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">RSI (14)</span>
-                  <Badge variant={
-                    analysis.indicators.rsi < 30 ? "default" : 
-                    analysis.indicators.rsi > 70 ? "destructive" : "secondary"
-                  }>
+            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-muted-foreground">RSI (14)</span>
+                  <Badge 
+                    className="text-base px-3 py-1"
+                    variant={
+                      analysis.indicators.rsi < 30 ? "default" : 
+                      analysis.indicators.rsi > 70 ? "destructive" : "secondary"
+                    }
+                  >
                     {analysis.indicators.rsi.toFixed(1)}
                   </Badge>
                 </div>
-                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all ${
                       analysis.indicators.rsi < 30 ? "bg-success" :
@@ -573,79 +605,86 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                     style={{ width: `${analysis.indicators.rsi}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm font-medium">
                   {analysis.indicators.rsi < 30 ? "Survendu ✅" : 
                    analysis.indicators.rsi > 70 ? "Suracheté ⚠️" : "Neutre"}
                 </p>
               </div>
             </Card>
 
-            <Card className="p-6">
-              <div className="space-y-2">
-                <span className="text-sm text-muted-foreground">MACD</span>
-                <Badge variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}>
+            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
+              <div className="space-y-3">
+                <span className="text-sm font-medium text-muted-foreground">MACD</span>
+                <Badge 
+                  className="text-base px-3 py-1"
+                  variant={analysis.indicators.macd === "Haussier" ? "default" : "destructive"}
+                >
                   {analysis.indicators.macd}
                 </Badge>
-                <p className="text-xs text-muted-foreground">
-                  Momentum {analysis.indicators.macd === "Haussier" ? "↑" : "↓"}
+                <p className="text-sm font-medium">
+                  Momentum {analysis.indicators.macd === "Haussier" ? "↑ Haussier" : "↓ Baissier"}
                 </p>
               </div>
             </Card>
 
-            <Card className="p-6">
-              <div className="space-y-2">
-                <span className="text-sm text-muted-foreground">Bollinger Bands</span>
-                <Badge variant={
-                  analysis.indicators.bb === "Survente" ? "default" : 
-                  analysis.indicators.bb === "Surachat" ? "destructive" : "secondary"
-                }>
+            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
+              <div className="space-y-3">
+                <span className="text-sm font-medium text-muted-foreground">Bollinger Bands</span>
+                <Badge 
+                  className="text-base px-3 py-1"
+                  variant={
+                    analysis.indicators.bb === "Survente" ? "default" : 
+                    analysis.indicators.bb === "Surachat" ? "destructive" : "secondary"
+                  }
+                >
                   {analysis.indicators.bb}
                 </Badge>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm font-medium">
                   {analysis.indicators.bb === "Survente" ? "Zone d'achat ✅" : 
                    analysis.indicators.bb === "Surachat" ? "Zone de vente ⚠️" : "Zone neutre"}
                 </p>
               </div>
             </Card>
 
-            <Card className="p-6">
-              <div className="space-y-2">
-                <span className="text-sm text-muted-foreground">ATR (Volatilité)</span>
-                <p className="text-2xl font-bold">${analysis.indicators.atr.toFixed(2)}</p>
-                <p className="text-xs text-muted-foreground">
+            <Card className="p-6 bg-gradient-to-br from-card to-secondary/20 hover:shadow-lg transition-shadow">
+              <div className="space-y-3">
+                <span className="text-sm font-medium text-muted-foreground">ATR (Volatilité)</span>
+                <p className="text-3xl font-bold">${analysis.indicators.atr.toFixed(2)}</p>
+                <p className="text-sm font-medium text-muted-foreground">
                   Volatilité moyenne sur 14 périodes
                 </p>
               </div>
             </Card>
           </div>
 
-          <div className="flex gap-4">
-            <TradingBotAI 
-              symbol={crypto}
-              cryptoName={cryptoName}
-              analysisData={{
-                signal: analysis.signal,
-                price: analysis.price,
-                stopLoss: analysis.stopLoss,
-                takeProfit: analysis.takeProfit,
-                leverage: analysis.leverage
-              }}
-              onAnalyzeNow={loadAnalysis}
-            />
-            
-            <AlertsManager symbol={crypto} cryptoName={cryptoName} currentPrice={analysis.price} />
-            
-            <Button 
-              onClick={() => setTradeJournalOpen(true)} 
-              variant="outline" 
-              className="gap-2"
-            >
-              <BookOpen className="w-4 h-4" />
-              Enregistrer le Trade
-            </Button>
-          </div>
+          {/* Actions Intelligentes - Full Width */}
+          <TradingBotAI 
+            symbol={crypto}
+            cryptoName={cryptoName}
+            analysisData={{
+              signal: analysis.signal,
+              price: analysis.price,
+              stopLoss: analysis.stopLoss,
+              takeProfit: analysis.takeProfit,
+              leverage: analysis.leverage
+            }}
+            onAnalyzeNow={loadAnalysis}
+          />
+          
+          {/* Alertes Prix - Full Width */}
+          <AlertsManager symbol={crypto} cryptoName={cryptoName} currentPrice={analysis.price} />
+          
+          {/* Enregistrer le Trade - Full Width avec fond vert */}
+          <Button 
+            onClick={() => setTradeJournalOpen(true)} 
+            size="lg"
+            className="w-full gap-2 bg-success hover:bg-success/90 text-white font-bold text-lg py-6"
+          >
+            <BookOpen className="w-5 h-5" />
+            Enregistrer le Trade
+          </Button>
 
-          {/* News Section */}
+          {/* News Section - Full Width */}
           {news.length > 0 && (
             <Card className="p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -654,22 +693,44 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
               </h3>
               <div className="space-y-3">
                 {news.slice(0, 5).map((item: any, idx: number) => (
-                  <div key={idx} className="p-4 bg-secondary/30 rounded-lg border border-border">
+                  <a 
+                    key={idx} 
+                    href={item.url || '#'} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block p-4 bg-secondary/30 rounded-lg border border-border hover:border-primary transition-colors cursor-pointer"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
-                        <h4 className="font-semibold mb-1">{item.title}</h4>
+                        <h4 className="font-semibold mb-1 hover:text-primary transition-colors">{item.title}</h4>
                         <p className="text-sm text-muted-foreground line-clamp-2">{item.description}</p>
+                        {item.source && (
+                          <p className="text-xs text-muted-foreground mt-2">Source: {item.source}</p>
+                        )}
                       </div>
                       {item.sentiment && (
-                        <Badge variant={
-                          item.sentiment === 'positive' ? 'default' : 
-                          item.sentiment === 'negative' ? 'destructive' : 'secondary'
-                        }>
+                        <Badge 
+                          className="font-semibold"
+                          variant={
+                            item.sentiment.toLowerCase().includes('très positif') || item.sentiment.toLowerCase().includes('very positive') ? 'default' :
+                            item.sentiment.toLowerCase().includes('positif') || item.sentiment.toLowerCase().includes('positive') ? 'default' : 
+                            item.sentiment.toLowerCase().includes('très négatif') || item.sentiment.toLowerCase().includes('very negative') ? 'destructive' :
+                            item.sentiment.toLowerCase().includes('négatif') || item.sentiment.toLowerCase().includes('negative') ? 'destructive' : 
+                            'secondary'
+                          }
+                          style={{
+                            backgroundColor: item.sentiment.toLowerCase().includes('très positif') || item.sentiment.toLowerCase().includes('very positive') ? 'hsl(var(--success))' :
+                              item.sentiment.toLowerCase().includes('positif') || item.sentiment.toLowerCase().includes('positive') ? 'hsl(var(--primary))' :
+                              item.sentiment.toLowerCase().includes('très négatif') || item.sentiment.toLowerCase().includes('very negative') ? 'hsl(var(--danger))' :
+                              item.sentiment.toLowerCase().includes('négatif') || item.sentiment.toLowerCase().includes('negative') ? 'hsl(var(--destructive))' :
+                              undefined
+                          }}
+                        >
                           {item.sentiment}
                         </Badge>
                       )}
                     </div>
-                  </div>
+                  </a>
                 ))}
               </div>
             </Card>
@@ -703,13 +764,33 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
             </Card>
           )}
 
-          <Card className="p-6 bg-primary/5 border-primary/20">
-            <div className="flex items-start gap-3">
-              <Brain className="w-6 h-6 text-primary mt-1" />
-              <div>
-                <h3 className="font-bold text-lg mb-2">Recommandation Finale de l'IA</h3>
-                <p className="text-sm whitespace-pre-line">{analysis.recommendation}</p>
-                <p className="text-xs text-muted-foreground mt-4">
+          <Card className="p-8 bg-gradient-to-br from-primary/5 to-secondary/10 border-primary/20">
+            <div className="flex items-start gap-4">
+              <Brain className="w-8 h-8 text-primary mt-1" />
+              <div className="flex-1">
+                <h3 className="font-bold text-2xl mb-4">Recommandation Finale de l'IA</h3>
+                <div className="prose prose-sm max-w-none space-y-4">
+                  {analysis.recommendation.split('\n\n').map((paragraph, idx) => {
+                    const lines = paragraph.split('\n');
+                    return (
+                      <div key={idx}>
+                        {lines.map((line, lineIdx) => {
+                          // Mettre en gras les titres (lignes courtes en début ou avec ':')
+                          const isBold = line.length < 50 && (lineIdx === 0 || line.includes(':') || line.match(/^[A-Z]/));
+                          return (
+                            <p key={lineIdx} className={isBold ? "font-bold text-base" : "text-sm leading-relaxed"}>
+                              {line}
+                            </p>
+                          );
+                        })}
+                        {idx < analysis.recommendation.split('\n\n').length - 1 && (
+                          <hr className="my-3 border-t border-border/50" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-6 pt-4 border-t border-border/50">
                   ⚠️ Cette analyse est fournie à titre informatif uniquement et ne constitue pas un conseil en investissement.
                   Faites toujours vos propres recherches avant de prendre une décision de trading.
                 </p>

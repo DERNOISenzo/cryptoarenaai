@@ -494,8 +494,8 @@ serve(async (req) => {
     let bearishScore = 0;
 
     // Pre-calculate MACD directional bias (used for coherence check later)
-    const macdIsBullish = macdHist > 0 && macd > macdSignal;
-    const macdIsBearish = macdHist < 0 && macd < macdSignal;
+    let macdIsBullish = macdHist > 0 && macd > macdSignal;
+    let macdIsBearish = macdHist < 0 && macd < macdSignal;
 
     // RSI analysis with personalized thresholds
     if (rsi14 < userParams.rsi_oversold_threshold - 5) bullishScore += 3;
@@ -663,12 +663,43 @@ serve(async (req) => {
 
     const riskReward = Math.abs((takeProfit - currentPrice) / (currentPrice - stopLoss));
 
-    // Advanced leverage calculation with personalized max leverage and duration adjustment
+    // POINT 2: UTILISER LE CAPITAL ET GESTION DU RISQUE - CHARGER D'ABORD
+    let userCapital = 10000; // default
+    let userRiskPercent = 1; // default
+    let maxDailyLoss = 50; // default
+    let currentDailyLoss = 0; // default
+    let targetWinRate = 60; // default
+    
+    if (supabaseClient && userId) {
+      try {
+        const { data: userSettings } = await supabaseClient
+          .from('user_settings')
+          .select('capital, risk_percent_per_trade, max_loss_per_day, current_loss_today, target_win_rate')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (userSettings) {
+          userCapital = parseFloat(userSettings.capital);
+          userRiskPercent = parseFloat(userSettings.risk_percent_per_trade);
+          maxDailyLoss = parseFloat(userSettings.max_loss_per_day);
+          currentDailyLoss = parseFloat(userSettings.current_loss_today);
+          targetWinRate = parseFloat(userSettings.target_win_rate) || 60;
+        }
+      } catch (e) {
+        console.log('Could not fetch user settings, using defaults:', e);
+      }
+    }
+
+    // Mettre à jour macdIsBullish et macdIsBearish
+    macdIsBullish = macdHist > 0;
+    macdIsBearish = macdHist < 0;
+
+    // POINT 2 & 4: Advanced leverage calculation avec capital, risque et cohérence
     const volatilityPercent = (atr14 / currentPrice) * 100;
     const trendStrength = adx;
     let baseLeverage = Math.min(2, userParams.max_leverage);
     
-    // Base leverage calculation based on volatility and confidence
+    // Base leverage calculation based on volatility, confidence, and trend strength
     if (volatilityPercent < 0.8 && trendStrength > 25 && confidence > 70) {
       baseLeverage = Math.min(10, userParams.max_leverage);
     } else if (volatilityPercent < 1.5 && trendStrength > 20 && confidence > 65) {
@@ -715,8 +746,21 @@ serve(async (req) => {
       suggestedLeverage = Math.min(baseLeverage * 0.7, userParams.max_leverage, 7);
     }
     
+    // AJUSTEMENT SELON LE CAPITAL ET LE RISQUE: Si le capital est faible, réduire le levier
+    const capitalFactor = userCapital < 1000 ? 0.5 : 
+                          userCapital < 5000 ? 0.7 : 
+                          userCapital < 10000 ? 0.85 : 1.0;
+    suggestedLeverage *= capitalFactor;
+    
+    // AJUSTEMENT SELON LE RISQUE PAR TRADE: Si le risque est élevé, réduire le levier
+    const riskFactor = userRiskPercent > 3 ? 0.6 : 
+                       userRiskPercent > 2 ? 0.8 : 1.0;
+    suggestedLeverage *= riskFactor;
+    
     // Ensure minimum leverage of 1
     suggestedLeverage = Math.max(1, Math.round(suggestedLeverage));
+    
+    console.log(`💰 Calcul levier: Base=${baseLeverage}x, Capital factor=${capitalFactor.toFixed(2)}, Risk factor=${riskFactor.toFixed(2)}, Final=${suggestedLeverage}x`);
 
     // Fetch 24h ticker
     const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
@@ -727,33 +771,6 @@ serve(async (req) => {
 
     // Calculate time horizon based on target duration or historical data
     const timeHorizon = calculateTimeHorizon(closes, atr14, currentPrice, takeProfit, parseFloat(ticker.quoteVolume), targetDuration);
-    
-    // POINT 2: UTILISER LE CAPITAL ET GESTION DU RISQUE
-    let userCapital = 10000; // default
-    let userRiskPercent = 1; // default
-    let maxDailyLoss = 50; // default
-    let currentDailyLoss = 0; // default
-    let targetWinRate = 60; // default
-    
-    if (supabaseClient && userId) {
-      try {
-        const { data: userSettings } = await supabaseClient
-          .from('user_settings')
-          .select('capital, risk_percent_per_trade, max_loss_per_day, current_loss_today, target_win_rate')
-          .eq('user_id', userId)
-          .maybeSingle();
-        
-        if (userSettings) {
-          userCapital = parseFloat(userSettings.capital);
-          userRiskPercent = parseFloat(userSettings.risk_percent_per_trade);
-          maxDailyLoss = parseFloat(userSettings.max_loss_per_day);
-          currentDailyLoss = parseFloat(userSettings.current_loss_today);
-          targetWinRate = parseFloat(userSettings.target_win_rate) || 60;
-        }
-      } catch (e) {
-        console.log('Could not fetch user settings, using defaults:', e);
-      }
-    }
     
     // Calculate position sizing with user's real capital and risk parameters
     const realPositionSize = calculatePositionSize(userCapital, currentPrice, stopLoss, userRiskPercent, suggestedLeverage);
