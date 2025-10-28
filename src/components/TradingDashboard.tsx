@@ -98,7 +98,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const [tradeJournalOpen, setTradeJournalOpen] = useState(false);
   const [tradeType, setTradeType] = useState<'scalp' | 'swing' | 'long'>(initialTradeType);
   const [targetDuration, setTargetDuration] = useState<number>(0);
-  const [capitalPercent, setCapitalPercent] = useState<number>(100);
+  const [capitalPercent, setCapitalPercent] = useState(100);
   const [userPreferences, setUserPreferences] = useState<{style: 'scalp' | 'swing' | 'long', loaded: boolean}>({style: 'swing', loaded: false});
   const { toast } = useToast();
   const navigate = useNavigate();

@@ -84,12 +84,12 @@ function analyzeSentiment(title: string, description: string): {
   return { score: normalizedScore, category, keywords: foundKeywords };
 }
 
-// Build sentiment map from news
-async function buildSentimentMap(symbols: string[]): Promise<Map<string, number>> {
-  const sentimentMap = new Map<string, number>();
+// Build sentiment map from news with enhanced scoring
+async function buildSentimentMap(symbols: string[]): Promise<Map<string, { sentiment: number; impact: string }>> {
+  const sentimentMap = new Map<string, { sentiment: number; impact: string }>();
   
   try {
-    // Fetch news for analysis (using the crypto-news endpoint)
+    // Fetch news for analysis
     const newsPromises = symbols.slice(0, 20).map(async symbol => {
       try {
         const response = await fetch(`https://fzkxeouvmkfvbtpzxeka.supabase.co/functions/v1/crypto-news`, {
@@ -98,28 +98,51 @@ async function buildSentimentMap(symbols: string[]): Promise<Map<string, number>
           body: JSON.stringify({ symbol })
         });
         
-        if (!response.ok) return { symbol, sentiment: 0 };
+        if (!response.ok) return { symbol, sentiment: 0, impact: 'neutral' };
         
         const data = await response.json();
         const articles = data.articles || [];
         
         let totalSentiment = 0;
+        let criticalEvents = 0; // Count of major events (hack, listing, partnership)
+        
         articles.slice(0, 5).forEach((article: any) => {
           const analysis = analyzeSentiment(article.title || '', article.description || '');
           totalSentiment += analysis.score;
+          
+          // Detect critical events that should significantly impact score
+          const text = `${article.title} ${article.description}`.toLowerCase();
+          if (text.includes('hack') || text.includes('exploit') || text.includes('scam')) {
+            criticalEvents -= 3; // Major negative impact
+          }
+          if (text.includes('listing') || text.includes('binance') || text.includes('coinbase')) {
+            criticalEvents += 2; // Major positive impact  
+          }
+          if (text.includes('partnership') || text.includes('collaboration')) {
+            criticalEvents += 2; // Major positive impact
+          }
         });
         
         const avgSentiment = articles.length > 0 ? totalSentiment / Math.min(5, articles.length) : 0;
-        return { symbol, sentiment: avgSentiment };
+        
+        // Amplify sentiment with critical events
+        const finalSentiment = avgSentiment + (criticalEvents * 0.15);
+        
+        // Determine impact level
+        let impact = 'neutral';
+        if (Math.abs(criticalEvents) >= 2) impact = 'high';
+        else if (Math.abs(criticalEvents) >= 1) impact = 'medium';
+        
+        return { symbol, sentiment: Math.max(-1, Math.min(1, finalSentiment)), impact };
       } catch {
-        return { symbol, sentiment: 0 };
+        return { symbol, sentiment: 0, impact: 'neutral' };
       }
     });
     
     const results = await Promise.all(newsPromises);
-    results.forEach(({ symbol, sentiment }) => {
+    results.forEach(({ symbol, sentiment, impact }) => {
       const baseName = symbol.replace('USDT', '');
-      sentimentMap.set(baseName, sentiment);
+      sentimentMap.set(baseName, { sentiment, impact });
     });
   } catch (error) {
     console.error('Error building sentiment map:', error);
@@ -329,13 +352,25 @@ serve(async (req) => {
         // SENTIMENT SCORING (30 points max) - Enhanced with NEWS analysis
         let sentimentScore = 0;
         
-        // News sentiment integration (15 points)
-        const newsSentiment = sentimentMap.get(baseName) || 0;
+        // News sentiment integration with critical event impact
+        const newsData = sentimentMap.get(baseName) || { sentiment: 0, impact: 'neutral' };
+        const newsSentiment = newsData.sentiment;
+        const newsImpact = newsData.impact;
+        
+        // Base sentiment scoring (15 points)
         if (newsSentiment > 0.5) sentimentScore += 15;  // Very positive news
         else if (newsSentiment > 0.2) sentimentScore += 10; // Positive news
         else if (newsSentiment > -0.2) sentimentScore += 5; // Neutral
         else if (newsSentiment > -0.5) sentimentScore -= 5; // Negative news
         else sentimentScore -= 15; // Very negative news
+        
+        // Critical event multiplier (HACK, LISTING, PARTNERSHIP)
+        if (newsImpact === 'high') {
+          // Double the sentiment impact for critical events
+          sentimentScore *= 2;
+        } else if (newsImpact === 'medium') {
+          sentimentScore *= 1.5;
+        }
         
         // Safety mode penalty
         if (safetyMode) {

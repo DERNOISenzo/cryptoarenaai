@@ -41,28 +41,26 @@ function calculateVWAP(highs: number[], lows: number[], closes: number[], volume
 }
 
 // Calculate Supertrend indicator
-function calculateSupertrend(
-  highs: number[], 
-  lows: number[], 
-  closes: number[], 
-  atr: number, 
-  multiplier: number = 3
-): { value: number; direction: 'BULLISH' | 'BEARISH' } {
-  const hl2 = (highs[highs.length - 1] + lows[lows.length - 1]) / 2;
+function calculateSupertrend(highs: number[], lows: number[], closes: number[], atr: number, multiplier = 3): { value: number; direction: 'BULLISH' | 'BEARISH' } {
+  const len = closes.length;
+  const hl2 = (highs[len - 1] + lows[len - 1]) / 2;
+  
   const basicUpperBand = hl2 + (multiplier * atr);
   const basicLowerBand = hl2 - (multiplier * atr);
-  const currentPrice = closes[closes.length - 1];
   
-  // Supertrend direction based on price relative to bands
-  const direction = currentPrice > basicUpperBand ? 'BULLISH' : 
-                    currentPrice < basicLowerBand ? 'BEARISH' : 'BULLISH';
+  const currentPrice = closes[len - 1];
   
-  const supertrendValue = direction === 'BULLISH' ? basicLowerBand : basicUpperBand;
-  
-  return { value: supertrendValue, direction };
+  if (currentPrice > basicUpperBand) {
+    return { value: basicLowerBand, direction: 'BULLISH' };
+  } else if (currentPrice < basicLowerBand) {
+    return { value: basicUpperBand, direction: 'BEARISH' };
+  } else {
+    return currentPrice > hl2 
+      ? { value: basicLowerBand, direction: 'BULLISH' }
+      : { value: basicUpperBand, direction: 'BEARISH' };
+  }
 }
 
-// Calculate RSI
 function calculateRSI(closes: number[], period = 14): number {
   if (closes.length < period + 1) return 50;
   
@@ -83,7 +81,6 @@ function calculateRSI(closes: number[], period = 14): number {
   return 100 - (100 / (1 + rs));
 }
 
-// Calculate EMA
 function calculateEMA(data: number[], period: number): number {
   if (data.length < period) return data[data.length - 1];
   
@@ -96,58 +93,57 @@ function calculateEMA(data: number[], period: number): number {
   return ema;
 }
 
-// Detect advanced micro patterns
-function detectMicroPattern(closes: number[], highs: number[], lows: number[], vwap: number): string {
-  if (closes.length < 20) return 'NONE';
+function calculateATR(highs: number[], lows: number[], closes: number[], period = 14): number {
+  const trueRanges: number[] = [];
   
+  for (let i = 1; i < closes.length; i++) {
+    const high = highs[i];
+    const low = lows[i];
+    const prevClose = closes[i - 1];
+    
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    trueRanges.push(tr);
+  }
+  
+  const recentTR = trueRanges.slice(-period);
+  return recentTR.reduce((a, b) => a + b, 0) / period;
+}
+
+function detectAdvancedPattern(
+  closes: number[], 
+  vwap: number, 
+  supertrend: { value: number; direction: 'BULLISH' | 'BEARISH' }
+): string {
   const currentPrice = closes[closes.length - 1];
-  const recentCloses = closes.slice(-20);
-  const recentHighs = highs.slice(-20);
-  const recentLows = lows.slice(-20);
+  const prevPrice = closes[closes.length - 2];
   
-  // VWAP bounce
-  if (Math.abs(currentPrice - vwap) / vwap < 0.001 && currentPrice > closes[closes.length - 2]) {
+  if (prevPrice < vwap && currentPrice > vwap) {
     return 'VWAP BOUNCE';
   }
   
-  // VWAP breakout
-  if (currentPrice > vwap * 1.005 && closes[closes.length - 2] < vwap) {
+  if (currentPrice > vwap * 1.005 && supertrend.direction === 'BULLISH') {
     return 'VWAP BREAKOUT';
   }
   
-  // Flag pattern
-  const isUptrend = closes[closes.length - 1] > closes[closes.length - 10];
-  const consolidationRange = Math.max(...recentHighs.slice(-5)) - Math.min(...recentLows.slice(-5));
-  const avgRange = (Math.max(...recentHighs) - Math.min(...recentLows)) / 2;
-  
-  if (consolidationRange < avgRange * 0.3 && isUptrend) {
-    return 'BULL FLAG';
+  if (supertrend.direction === 'BULLISH' && currentPrice > supertrend.value) {
+    return 'ST REVERSAL BULL';
   }
   
-  // Pennant pattern
-  const higherLows = recentLows[recentLows.length - 1] > recentLows[recentLows.length - 5];
-  const lowerHighs = recentHighs[recentHighs.length - 1] < recentHighs[recentHighs.length - 5];
-  
-  if (higherLows && lowerHighs) {
-    return 'PENNANT';
+  if (supertrend.direction === 'BEARISH' && currentPrice < supertrend.value) {
+    return 'ST REVERSAL BEAR';
   }
   
-  // Price action breakout
-  const recentHigh = Math.max(...recentHighs.slice(0, -2));
-  if (currentPrice > recentHigh * 1.01) {
-    return 'BREAKOUT';
-  }
-  
-  // Support bounce
-  const recentLow = Math.min(...recentLows.slice(0, -2));
-  if (currentPrice > recentLow && currentPrice < recentLow * 1.005) {
-    return 'SUPPORT BOUNCE';
+  if (currentPrice < vwap * 0.995) {
+    return 'VWAP REJECTION';
   }
   
   return 'CONSOLIDATION';
 }
 
-// Analyze order book imbalance
 function analyzeOrderBookImbalance(closes: number[], volumes: number[]): number {
   if (closes.length < 10) return 0;
   
@@ -171,7 +167,6 @@ function analyzeOrderBookImbalance(closes: number[], volumes: number[]): number 
   return (buyVolume - sellVolume) / totalVolume;
 }
 
-// Detect volume spike
 function detectVolumeSpike(volumes: number[]): boolean {
   if (volumes.length < 20) return false;
   
@@ -181,38 +176,16 @@ function detectVolumeSpike(volumes: number[]): boolean {
   return currentVolume > avgVolume * 2;
 }
 
-// Calculate ATR
-function calculateATR(highs: number[], lows: number[], closes: number[], period = 14): number {
-  const trueRanges: number[] = [];
-  
-  for (let i = 1; i < closes.length; i++) {
-    const high = highs[i];
-    const low = lows[i];
-    const prevClose = closes[i - 1];
-    
-    const tr = Math.max(
-      high - low,
-      Math.abs(high - prevClose),
-      Math.abs(low - prevClose)
-    );
-    trueRanges.push(tr);
-  }
-  
-  const recentTR = trueRanges.slice(-period);
-  return recentTR.reduce((a, b) => a + b, 0) / period;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { timeframe = '5m', limit = 50 } = await req.json().catch(() => ({}));
+    const { timeframe = '5m', limit = 20 } = await req.json().catch(() => ({}));
     
-    console.log(`📊 Enhanced Intraday Scanner (VWAP + Supertrend): ${timeframe}`);
+    console.log(`📊 VWAP/Supertrend Scanner: ${timeframe}`);
     
-    // Get user parameters if authenticated
     const authHeader = req.headers.get('Authorization');
     let userParams = {
       rsi_oversold_threshold: 30,
@@ -237,7 +210,7 @@ serve(async (req) => {
             .from('analysis_params')
             .select('*')
             .eq('user_id', authData.user.id)
-            .single();
+            .maybeSingle();
           
           if (params) {
             userParams = {
@@ -246,15 +219,13 @@ serve(async (req) => {
               confidence_threshold: params.confidence_threshold,
               max_leverage: params.max_leverage
             };
-            console.log('✅ Using personalized parameters');
           }
         }
       } catch (e) {
-        console.log('Using default parameters');
+        console.log('Using defaults');
       }
     }
 
-    // Fetch top liquid pairs
     const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
     const tickers = await response.json();
     
@@ -286,86 +257,76 @@ serve(async (req) => {
 
         const currentPrice = closes[closes.length - 1];
         
-        // Calculate indicators
         const rsi = calculateRSI(closes, 14);
         const ema9 = calculateEMA(closes, 9);
         const ema21 = calculateEMA(closes, 21);
         const atr = calculateATR(highs, lows, closes, 14);
-        
-        // NEW: Calculate VWAP and Supertrend
         const vwap = calculateVWAP(highs, lows, closes, volumes);
-        const supertrend = calculateSupertrend(highs, lows, closes, atr, 3);
-        
-        // Detect patterns with VWAP context
-        const microPattern = detectMicroPattern(closes, highs, lows, vwap);
+        const supertrend = calculateSupertrend(highs, lows, closes, atr);
+        const microPattern = detectAdvancedPattern(closes, vwap, supertrend);
         const orderBookImbalance = analyzeOrderBookImbalance(closes, volumes);
         const volumeSpike = detectVolumeSpike(volumes);
         const momentum = ((ema9 - ema21) / ema21) * 100;
         
-        // Enhanced signal detection with VWAP and Supertrend
         let signal: 'LONG' | 'SHORT' | null = null;
         let confidence = 0;
         
-        // LONG conditions (enhanced with VWAP and Supertrend)
         if (
-          rsi < userParams.rsi_oversold_threshold + 5 &&
-          ema9 > ema21 &&
-          currentPrice > vwap * 0.998 && // Near or above VWAP
+          currentPrice > vwap &&
           supertrend.direction === 'BULLISH' &&
-          orderBookImbalance > 0.2 &&
-          (microPattern === 'BULL FLAG' || microPattern === 'VWAP BOUNCE' || 
-           microPattern === 'VWAP BREAKOUT' || microPattern === 'BREAKOUT')
+          currentPrice > supertrend.value &&
+          rsi < userParams.rsi_oversold_threshold + 10 &&
+          ema9 > ema21 &&
+          orderBookImbalance > 0.15
         ) {
           signal = 'LONG';
-          confidence = 65;
+          confidence = 60;
           
-          if (volumeSpike) confidence += 12;
-          if (orderBookImbalance > 0.4) confidence += 8;
-          if (microPattern === 'VWAP BREAKOUT' || microPattern === 'BREAKOUT') confidence += 10;
-          if (currentPrice > vwap * 1.002) confidence += 5;
-          if (rsi < 30) confidence += 5;
+          if (microPattern === 'VWAP BOUNCE' || microPattern === 'VWAP BREAKOUT') confidence += 15;
+          if (volumeSpike) confidence += 10;
+          if (orderBookImbalance > 0.4) confidence += 10;
+          if (currentPrice > vwap * 1.01) confidence += 5;
         }
         
-        // SHORT conditions (enhanced with VWAP and Supertrend)
         if (
-          rsi > userParams.rsi_overbought_threshold - 5 &&
-          ema9 < ema21 &&
-          currentPrice < vwap * 1.002 && // Near or below VWAP
+          currentPrice < vwap &&
           supertrend.direction === 'BEARISH' &&
-          orderBookImbalance < -0.2
+          currentPrice < supertrend.value &&
+          rsi > userParams.rsi_overbought_threshold - 10 &&
+          ema9 < ema21 &&
+          orderBookImbalance < -0.15
         ) {
           signal = 'SHORT';
-          confidence = 65;
+          confidence = 60;
           
-          if (volumeSpike) confidence += 12;
-          if (orderBookImbalance < -0.4) confidence += 8;
-          if (currentPrice < vwap * 0.998) confidence += 5;
-          if (rsi > 70) confidence += 5;
+          if (microPattern === 'VWAP REJECTION' || microPattern === 'ST REVERSAL BEAR') confidence += 15;
+          if (volumeSpike) confidence += 10;
+          if (orderBookImbalance < -0.4) confidence += 10;
+          if (currentPrice < vwap * 0.99) confidence += 5;
         }
         
-        // Only add signals with sufficient confidence
         if (signal && confidence >= userParams.confidence_threshold) {
           const stopLoss = signal === 'LONG' 
-            ? currentPrice - (atr * 0.5)
-            : currentPrice + (atr * 0.5);
+            ? currentPrice - (atr * 0.6)
+            : currentPrice + (atr * 0.6);
           
           const tp1 = signal === 'LONG'
-            ? currentPrice + (atr * 0.8)
-            : currentPrice - (atr * 0.8);
+            ? currentPrice + (atr * 1.0)
+            : currentPrice - (atr * 1.0);
           
           const tp2 = signal === 'LONG'
-            ? currentPrice + (atr * 1.5)
-            : currentPrice - (atr * 1.5);
+            ? currentPrice + (atr * 1.8)
+            : currentPrice - (atr * 1.8);
           
           const tp3 = signal === 'LONG'
-            ? currentPrice + (atr * 2.5)
-            : currentPrice - (atr * 2.5);
+            ? currentPrice + (atr * 3.0)
+            : currentPrice - (atr * 3.0);
           
           const durationMap: { [key: string]: string } = {
-            '1m': '5-15 min',
+            '1m': '3-10 min',
             '5m': '15-45 min',
-            '15m': '1-3 heures',
-            '1h': '3-8 heures'
+            '15m': '45min-2h',
+            '1h': '2-6 heures'
           };
           
           signals.push({
@@ -386,18 +347,17 @@ serve(async (req) => {
             orderBookImbalance: Math.round(orderBookImbalance * 100),
             volumeSpike,
             momentum: Math.round(momentum * 100) / 100,
-            expectedDuration: durationMap[timeframe] || '1-3 heures'
+            expectedDuration: durationMap[timeframe] || '1-3h'
           });
         }
       } catch (error) {
-        console.error(`Error analyzing ${ticker.symbol}:`, error);
         continue;
       }
     }
 
     signals.sort((a, b) => b.confidence - a.confidence);
 
-    console.log(`✅ Found ${signals.length} enhanced signals on ${timeframe}`);
+    console.log(`✅ ${signals.length} signals found`);
 
     return new Response(
       JSON.stringify({
@@ -405,8 +365,7 @@ serve(async (req) => {
         timeframe,
         analyzed: usdtPairs.length,
         count: signals.length,
-        timestamp: new Date().toISOString(),
-        features: ['VWAP', 'Supertrend', 'Enhanced Patterns']
+        timestamp: new Date().toISOString()
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -414,7 +373,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Enhanced intraday scanner error:', error);
+    console.error('Scanner error:', error);
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Unknown error',
       signals: []
