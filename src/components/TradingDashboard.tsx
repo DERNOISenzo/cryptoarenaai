@@ -338,6 +338,23 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                     Enregistrer
                   </Button>
                 </div>
+                
+                <div className="flex items-center gap-3">
+                  <label htmlFor="targetDuration" className="text-sm font-medium">Durée du Trade:</label>
+                  <input
+                    id="targetDuration"
+                    type="number"
+                    min="0"
+                    max="10080"
+                    value={targetDuration}
+                    onChange={(e) => setTargetDuration(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-28 px-3 py-1 text-sm border border-border rounded-md bg-background"
+                    placeholder="en minutes"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    (0 = auto, 15 = 15min, 60 = 1h, 1440 = 1j)
+                  </span>
+                </div>
               </div>
             </Card>
             
