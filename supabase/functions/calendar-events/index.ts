@@ -15,43 +15,151 @@ interface CryptoEvent {
   coins: string[];
 }
 
-// Simulate event data - in production, this would fetch from CoinMarketCal API or similar
-async function fetchEventsFromAPI(symbols: string[]): Promise<CryptoEvent[]> {
-  // Mock data for demonstration
-  const mockEvents: CryptoEvent[] = [
-    {
-      title: "Major Exchange Listing",
-      description: "Listing on a top-tier exchange",
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      category: 'listing',
-      impact: 'high',
-      source: 'Exchange Announcement',
-      coins: ['BTC', 'ETH']
-    },
-    {
-      title: "Network Upgrade",
-      description: "Major protocol improvement",
-      date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-      category: 'upgrade',
-      impact: 'high',
-      source: 'Official Roadmap',
-      coins: ['ETH']
-    },
-    {
-      title: "Community AMA",
-      description: "Ask Me Anything with development team",
-      date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      category: 'conference',
-      impact: 'low',
-      source: 'Social Media',
-      coins: ['BTC']
+// Fetch events from Binance announcements API
+async function fetchBinanceEvents(symbols: string[]): Promise<CryptoEvent[]> {
+  try {
+    const response = await fetch('https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageSize=20&pageNo=1');
+    const data = await response.json();
+    
+    const events: CryptoEvent[] = [];
+    
+    if (data?.data?.catalogs?.[0]?.articles) {
+      for (const article of data.data.catalogs[0].articles) {
+        const title = article.title || '';
+        const titleUpper = title.toUpperCase();
+        
+        // Filter for relevant symbols
+        const relevantCoins = symbols.filter(symbol => titleUpper.includes(symbol));
+        if (relevantCoins.length === 0) continue;
+        
+        // Categorize based on keywords
+        let category: CryptoEvent['category'] = 'other';
+        let impact: CryptoEvent['impact'] = 'medium';
+        
+        if (titleUpper.includes('LISTING') || titleUpper.includes('LISTS')) {
+          category = 'listing';
+          impact = 'high';
+        } else if (titleUpper.includes('UPGRADE') || titleUpper.includes('MAINNET')) {
+          category = 'upgrade';
+          impact = 'high';
+        } else if (titleUpper.includes('PARTNERSHIP') || titleUpper.includes('PARTNERS')) {
+          category = 'partnership';
+          impact = 'medium';
+        } else if (titleUpper.includes('AIRDROP')) {
+          category = 'airdrop';
+          impact = 'medium';
+        } else if (titleUpper.includes('FORK')) {
+          category = 'fork';
+          impact = 'high';
+        }
+        
+        events.push({
+          title: title,
+          description: article.summary || '',
+          date: new Date(article.releaseDate || Date.now()).toISOString(),
+          category,
+          impact,
+          source: 'Binance',
+          coins: relevantCoins
+        });
+      }
     }
-  ];
+    
+    return events;
+  } catch (error) {
+    console.error('Error fetching Binance events:', error);
+    return [];
+  }
+}
 
-  // Filter events for requested symbols
-  return mockEvents.filter(event => 
-    symbols.some(symbol => event.coins.includes(symbol))
+// Fetch events from CoinGecko (free, no API key required)
+async function fetchCoinGeckoEvents(symbols: string[]): Promise<CryptoEvent[]> {
+  try {
+    const events: CryptoEvent[] = [];
+    
+    // Convert symbols to CoinGecko IDs (simple mapping)
+    const symbolToId: Record<string, string> = {
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum',
+      'BNB': 'binancecoin',
+      'SOL': 'solana',
+      'ADA': 'cardano',
+      'XRP': 'ripple',
+      'DOT': 'polkadot',
+      'DOGE': 'dogecoin',
+      'AVAX': 'avalanche-2',
+      'MATIC': 'matic-network',
+      'LINK': 'chainlink',
+      'UNI': 'uniswap',
+      'ATOM': 'cosmos',
+      'LTC': 'litecoin',
+      'XLM': 'stellar'
+    };
+    
+    for (const symbol of symbols) {
+      const coinId = symbolToId[symbol];
+      if (!coinId) continue;
+      
+      try {
+        const response = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`);
+        const data = await response.json();
+        
+        // Check for upcoming events in description
+        if (data?.description?.en) {
+          const description = data.description.en;
+          
+          // Detect upgrades mentions
+          if (description.includes('upgrade') || description.includes('hard fork')) {
+            events.push({
+              title: `${symbol} Network Upgrade`,
+              description: 'Potential network upgrade detected',
+              date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+              category: 'upgrade',
+              impact: 'medium',
+              source: 'CoinGecko',
+              coins: [symbol]
+            });
+          }
+        }
+        
+        // Add delay to respect rate limits (free tier)
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (error) {
+        console.error(`Error fetching ${symbol} from CoinGecko:`, error);
+      }
+    }
+    
+    return events;
+  } catch (error) {
+    console.error('Error fetching CoinGecko events:', error);
+    return [];
+  }
+}
+
+// Fetch and combine events from multiple sources
+async function fetchEventsFromAPI(symbols: string[]): Promise<CryptoEvent[]> {
+  console.log('Fetching events from multiple sources for:', symbols);
+  
+  // Fetch from both sources in parallel
+  const [binanceEvents, geckoEvents] = await Promise.all([
+    fetchBinanceEvents(symbols),
+    fetchCoinGeckoEvents(symbols)
+  ]);
+  
+  // Combine and deduplicate events
+  const allEvents = [...binanceEvents, ...geckoEvents];
+  
+  // Remove duplicates based on title and date
+  const uniqueEvents = allEvents.filter((event, index, self) =>
+    index === self.findIndex((e) => 
+      e.title === event.title && 
+      new Date(e.date).toDateString() === new Date(event.date).toDateString()
+    )
   );
+  
+  console.log(`Found ${uniqueEvents.length} unique events from ${allEvents.length} total`);
+  
+  return uniqueEvents;
 }
 
 // Calculate event impact score
