@@ -823,6 +823,7 @@ serve(async (req) => {
       ? (takeProfit3 - currentPrice) * realPositionSize.size
       : (currentPrice - takeProfit3) * realPositionSize.size;
 
+    // POINT 5: AMÉLIORER L'IMPACT DES ÉVÉNEMENTS ET NEWS
     // Fetch calendar events to adjust score
     let eventsImpact = 0;
     try {
@@ -838,12 +839,42 @@ serve(async (req) => {
 
       if (eventsResponse.ok) {
         const eventsData = await eventsResponse.json();
-        if (eventsData.summary) {
-          // High impact events within 7 days can boost confidence
-          if (eventsData.summary.highImpactEvents > 0) {
-            eventsImpact = Math.min(10, eventsData.summary.highImpactEvents * 5);
-            console.log(`📅 Events impact: +${eventsImpact} points`);
+        if (eventsData.events && Array.isArray(eventsData.events)) {
+          // Analyser chaque événement et appliquer des bonus/malus spécifiques
+          for (const event of eventsData.events) {
+            const categoryLower = event.category?.toLowerCase() || '';
+            const titleLower = event.title?.toLowerCase() || '';
+            const impact = event.impact?.toLowerCase() || 'low';
+            
+            // Événements critiques négatifs
+            if (categoryLower.includes('hack') || titleLower.includes('hack') || titleLower.includes('exploit')) {
+              eventsImpact -= 25;
+              console.log(`🚨 HACK/EXPLOIT détecté: -25 points`);
+            }
+            // Listings positifs (boost significatif)
+            else if (categoryLower.includes('listing') || titleLower.includes('binance listing') || titleLower.includes('coinbase listing')) {
+              eventsImpact += impact === 'high' ? 20 : 15;
+              console.log(`🎯 LISTING détecté: +${impact === 'high' ? 20 : 15} points`);
+            }
+            // Partenariats positifs
+            else if (categoryLower.includes('partnership') || titleLower.includes('partnership') || titleLower.includes('collaboration')) {
+              eventsImpact += impact === 'high' ? 12 : 8;
+              console.log(`🤝 PARTNERSHIP: +${impact === 'high' ? 12 : 8} points`);
+            }
+            // Upgrades/Forks positifs
+            else if (categoryLower.includes('upgrade') || categoryLower.includes('fork') || titleLower.includes('upgrade') || titleLower.includes('mainnet')) {
+              eventsImpact += impact === 'high' ? 15 : 10;
+              console.log(`⬆️ UPGRADE/FORK: +${impact === 'high' ? 15 : 10} points`);
+            }
+            // Autres événements selon impact
+            else if (impact === 'high') {
+              eventsImpact += 8;
+              console.log(`📅 High impact event: +8 points`);
+            } else if (impact === 'medium') {
+              eventsImpact += 4;
+            }
           }
+          console.log(`📅 Total events impact: ${eventsImpact > 0 ? '+' : ''}${eventsImpact} points`);
         }
       }
     } catch (e) {
@@ -865,8 +896,8 @@ serve(async (req) => {
       if (fundamentalResponse.ok) {
         const fundData = await fundamentalResponse.json();
         if (fundData.fundamentalScore) {
-          // Scale fundamental score (0-100) to impact (0-15)
-          fundamentalScore = (fundData.fundamentalScore / 100) * 15;
+          // POINT 5: Augmenter l'impact du score fondamental (0-100) vers (0-25)
+          fundamentalScore = (fundData.fundamentalScore / 100) * 25;
           console.log(`🔍 Fundamental score: ${fundData.fundamentalScore}/100 (+${fundamentalScore.toFixed(1)} points)`);
         }
       }
@@ -890,8 +921,10 @@ serve(async (req) => {
       if (newsResponse.ok) {
         const newsData = await newsResponse.json();
         if (newsData.overallSentiment) {
-          newsImpact = newsData.overallSentiment.scoreAdjustment || 0;
-          console.log(`📰 News sentiment impact: ${newsImpact > 0 ? '+' : ''}${newsImpact} points`);
+          // POINT 5: Amplifier l'impact des news sentiment (multiplier par 1.5)
+          const baseImpact = newsData.overallSentiment.scoreAdjustment || 0;
+          newsImpact = baseImpact * 1.5;
+          console.log(`📰 News sentiment impact: ${newsImpact > 0 ? '+' : ''}${newsImpact.toFixed(1)} points (base: ${baseImpact})`);
         }
       }
     } catch (e) {
@@ -1086,15 +1119,6 @@ function generateRecommendation(
     rec += `Point d'entrée: Prix actuel ou légèrement au-dessus.\n`;
     rec += `La configuration actuelle présente un ratio risque/récompense favorable avec une probabilité élevée de succès basée sur l'analyse historique de patterns similaires.`;
     
-  } else {
-    rec += `ANALYSE TECHNIQUE:\n`;
-    rec += `Le marché présente des signaux contradictoires sans direction claire. `;
-    rec += `RSI: ${rsi.toFixed(1)} (zone neutre), `;
-    rec += `MACD: ${macdHist > 0 ? 'positif' : 'négatif'} mais faible. `;
-    
-    rec += `\n\nRECOMMANDATIONS:\n`;
-    rec += `Prudence recommandée. Attendez une confirmation plus claire des indicateurs avant d'entrer en position. `;
-    rec += `Surveillez les niveaux clés: Support à $${bb.lower.toFixed(2)}, Résistance à $${bb.upper.toFixed(2)}.`;
   }
   
   rec += `\n\nGESTION DU RISQUE:\n`;
