@@ -100,6 +100,7 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const [targetDuration, setTargetDuration] = useState<number>(0);
   const [capitalPercent, setCapitalPercent] = useState(100);
   const [userPreferences, setUserPreferences] = useState<{style: 'scalp' | 'swing' | 'long', loaded: boolean}>({style: 'swing', loaded: false});
+  const [userSettings, setUserSettings] = useState<{capital: number, riskPercent: number, targetWinRate: number} | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   
@@ -154,14 +155,21 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
         try {
           const { data: settings } = await supabase
             .from('user_settings')
-            .select('preferred_trade_style')
+            .select('preferred_trade_style, capital, risk_percent_per_trade, target_win_rate')
             .eq('user_id', session.user.id)
             .maybeSingle();
           
-          if (settings && settings.preferred_trade_style && !userPreferences.loaded) {
-            const style = settings.preferred_trade_style as 'scalp' | 'swing' | 'long';
-            setTradeType(style);
-            setUserPreferences({style, loaded: true});
+          if (settings) {
+            if (settings.preferred_trade_style && !userPreferences.loaded) {
+              const style = settings.preferred_trade_style as 'scalp' | 'swing' | 'long';
+              setTradeType(style);
+              setUserPreferences({style, loaded: true});
+            }
+            setUserSettings({
+              capital: settings.capital || 0,
+              riskPercent: settings.risk_percent_per_trade || 0,
+              targetWinRate: settings.target_win_rate || 0
+            });
           }
         } catch (error) {
           console.error('Error loading user preferences:', error);
@@ -339,22 +347,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                   </Button>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <label htmlFor="targetDuration" className="text-sm font-medium">Durée du Trade:</label>
-                  <input
-                    id="targetDuration"
-                    type="number"
-                    min="0"
-                    max="10080"
-                    value={targetDuration}
-                    onChange={(e) => setTargetDuration(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-28 px-3 py-1 text-sm border border-border rounded-md bg-background"
-                    placeholder="en minutes"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    (0 = auto, 15 = 15min, 60 = 1h, 1440 = 1j)
-                  </span>
-                </div>
               </div>
             </Card>
             
@@ -488,6 +480,15 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                 }`} />
                 <div className="flex-1">
                   <h3 className="font-bold text-lg mb-4">État du Risque Journalier</h3>
+                  {userSettings && (
+                    <div className="mb-4 p-3 bg-primary/10 rounded-lg border border-primary/20">
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <span><strong>Capital:</strong> ${userSettings.capital.toFixed(2)}</span>
+                        <span><strong>Risque:</strong> {userSettings.riskPercent}%</span>
+                        <span><strong>Win rate cible:</strong> {userSettings.targetWinRate}%</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid md:grid-cols-4 gap-6">
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Perte actuelle</p>
@@ -589,28 +590,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                       </div>
                     </div>
 
-                    {analysis.positionSizing && (
-                      <div className="md:col-span-4 p-4 bg-primary/10 rounded-lg border border-primary/20">
-                        <div className="flex items-start gap-2 mb-2">
-                          <DollarSign className="w-5 h-5 text-primary mt-0.5" />
-                          <p className="font-semibold">Taille de Position</p>
-                        </div>
-                        <div className="grid md:grid-cols-3 gap-4">
-                          <div>
-                            <p className="text-sm text-muted-foreground">Position</p>
-                            <p className="text-lg font-mono font-bold">{analysis.positionSizing.positionSize.toFixed(4)} {crypto.replace('USDT', '')}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-muted-foreground">Marge requise</p>
-                            <p className="text-lg font-bold">${analysis.positionSizing.margin.toFixed(2)} (Levier {analysis.leverage}x)</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-muted-foreground">Note</p>
-                            <p className="text-sm">{analysis.positionSizing.note}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <p className="text-muted-foreground">Aucun niveau de sortie défini pour ce signal</p>
