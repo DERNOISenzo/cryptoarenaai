@@ -179,10 +179,18 @@ serve(async (req) => {
       }
     }
     
+    // POINT 1: CHARGER TOUS LES PARAMÈTRES PERSONNALISÉS
     const effectiveThreshold = userParams?.confidence_threshold || threshold;
     const minBullishScore = userParams?.min_bullish_score || 8;
+    const rsiOversoldThreshold = userParams?.rsi_oversold_threshold || 30;
+    const rsiOverboughtThreshold = userParams?.rsi_overbought_threshold || 70;
+    const atrMultiplierTP = userParams?.atr_multiplier_tp || 2.0;
+    const atrMultiplierSL = userParams?.atr_multiplier_sl || 1.0;
     
-    console.log(`Market analysis with limit=${limit}, threshold=${effectiveThreshold}${userParams ? ' (personalized)' : ''}`);
+    console.log(`Market analysis with limit=${limit}, threshold=${effectiveThreshold}${userParams ? ' (personalized params)' : ''}`);
+    if (userParams) {
+      console.log(`📊 Paramètres personnalisés: RSI oversold=${rsiOversoldThreshold}, overbought=${rsiOverboughtThreshold}, min_bullish=${minBullishScore}`);
+    }
 
     // Check market-wide volatility for safety mode
     const btcData = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r => r.json());
@@ -280,11 +288,13 @@ serve(async (req) => {
         else if (drawdownFromATH < -30) technicalScore += 8;
         else if (drawdownFromATH > -10) technicalScore -= 5;
 
-        // RSI scoring (10 points)
-        if (rsi < 25) technicalScore += 10;
-        else if (rsi < 35) technicalScore += 7;
-        else if (rsi < 45) technicalScore += 4;
-        else if (rsi > 75) technicalScore -= 5;
+        // POINT 1: RSI scoring avec SEUILS PERSONNALISÉS (10 points)
+        if (rsi < rsiOversoldThreshold - 10) technicalScore += 10;  // Survente extrême
+        else if (rsi < rsiOversoldThreshold - 5) technicalScore += 8;  // Survente forte
+        else if (rsi < rsiOversoldThreshold) technicalScore += 6;  // Survente
+        else if (rsi < rsiOversoldThreshold + 10) technicalScore += 3;  // Légère survente
+        else if (rsi > rsiOverboughtThreshold + 10) technicalScore -= 8;  // Surachat extrême
+        else if (rsi > rsiOverboughtThreshold) technicalScore -= 5;  // Surachat
 
         // Momentum scoring (10 points)
         if (momentum > 8) technicalScore += 10;
@@ -393,7 +403,20 @@ serve(async (req) => {
         // TOTAL SCORE (100 points max)
         const totalScore = technicalScore + fundamentalScore + sentimentScore;
 
-    // Only include opportunities above effective threshold
+        // POINT 1: VÉRIFIER QUE LE SCORE TECHNIQUE DÉPASSE LE MIN_BULLISH_SCORE
+        // Si le score technique (sur 40) normalisé ne dépasse pas le minBullishScore (sur 20), 
+        // on pénalise le score total
+        const normalizedTechnicalScore = (technicalScore / 40) * 20; // Normaliser sur 20
+        if (normalizedTechnicalScore < minBullishScore) {
+          console.log(`⚠️ ${ticker.symbol}: Score technique (${normalizedTechnicalScore.toFixed(1)}/20) < seuil minimum (${minBullishScore}) - pénalité appliquée`);
+          // On peut soit le rejeter, soit appliquer une grosse pénalité
+          // Option: continuer avec pénalité de -15 points
+          // totalScore -= 15;
+          // OU Option: sauter complètement
+          continue;
+        }
+
+        // Only include opportunities above effective threshold
         if (totalScore >= effectiveThreshold) {
           const baseName = ticker.symbol.replace('USDT', '');
           
