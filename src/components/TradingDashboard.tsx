@@ -327,24 +327,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <input
-                    id="capitalPercent"
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={capitalPercent}
-                    onChange={(e) => setCapitalPercent(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-20 px-3 py-1 text-sm border border-border rounded-md bg-background"
-                  />
-                  <Button
-                    onClick={loadAnalysis}
-                    size="sm"
-                    variant="default"
-                  >
-                    Enregistrer
-                  </Button>
-                </div>
                 
               </div>
             </Card>
