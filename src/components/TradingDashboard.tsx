@@ -272,6 +272,14 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
   const isLong = analysis.signal === "LONG";
   const signalColor = isLong ? "success" : "danger";
 
+  const formatDuration = (minutes: number): string => {
+    if (minutes < 60) return `${minutes} min`;
+    if (minutes < 1440) return `${Math.round(minutes / 60)}h`;
+    if (minutes < 10080) return `${Math.round(minutes / 1440)} jour${minutes >= 2880 ? 's' : ''}`;
+    if (minutes < 43200) return `${Math.round(minutes / 10080)} semaine${minutes >= 20160 ? 's' : ''}`;
+    return `${Math.round(minutes / 43200)} mois`;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="p-4 md:p-8">
@@ -430,15 +438,13 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                       </div>
                       <p className="text-2xl font-bold">1:{analysis.riskReward.toFixed(1)}</p>
                     </div>
-                    {analysis.timeHorizon && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-xs text-muted-foreground">Horizon</p>
-                        </div>
-                        <p className="text-xl font-bold">{analysis.timeHorizon.estimate}</p>
-                        <p className="text-xs text-muted-foreground uppercase">{analysis.timeHorizon.type}</p>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs text-muted-foreground">Horizon</p>
                       </div>
-                    )}
+                      <p className="text-xl font-bold">{formatDuration(targetDuration)}</p>
+                      <p className="text-xs text-muted-foreground uppercase">{tradeType}</p>
+                    </div>
                   </div>
                 </div>
               </Card>
