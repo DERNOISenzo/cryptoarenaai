@@ -328,7 +328,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <label htmlFor="capitalPercent" className="text-sm font-medium">% du Capital:</label>
                   <input
                     id="capitalPercent"
                     type="number"
@@ -528,14 +527,9 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                         </div>
                         <p className="text-xl font-mono font-bold">${analysis.takeProfit1.toFixed(4)}</p>
                         {analysis.positionSizing.exitPlan && (
-                          <>
-                            <p className="text-success font-bold text-2xl">
-                              +${analysis.positionSizing.exitPlan.tp1.profit.toFixed(2)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {analysis.positionSizing.exitPlan.tp1.action}
-                            </p>
-                          </>
+                          <p className="text-xs text-muted-foreground">
+                            {analysis.positionSizing.exitPlan.tp1.action}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -547,14 +541,9 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                         </div>
                         <p className="text-xl font-mono font-bold">${analysis.takeProfit2.toFixed(4)}</p>
                         {analysis.positionSizing.exitPlan && (
-                          <>
-                            <p className="text-success font-bold text-2xl">
-                              +${analysis.positionSizing.exitPlan.tp2.profit.toFixed(2)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {analysis.positionSizing.exitPlan.tp2.action}
-                            </p>
-                          </>
+                          <p className="text-xs text-muted-foreground">
+                            {analysis.positionSizing.exitPlan.tp2.action}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -566,14 +555,9 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                         </div>
                         <p className="text-xl font-mono font-bold">${analysis.takeProfit3.toFixed(4)}</p>
                         {analysis.positionSizing.exitPlan && (
-                          <>
-                            <p className="text-success font-bold text-2xl">
-                              +${analysis.positionSizing.exitPlan.tp3.profit.toFixed(2)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {analysis.positionSizing.exitPlan.tp3.action}
-                            </p>
-                          </>
+                          <p className="text-xs text-muted-foreground">
+                            {analysis.positionSizing.exitPlan.tp3.action}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -582,11 +566,6 @@ const TradingDashboard = ({ crypto, cryptoName, tradeType: initialTradeType = 's
                       <div className="space-y-2">
                         <span className="font-semibold text-sm">Stop Loss</span>
                         <p className="text-xl font-mono font-bold">${analysis.stopLoss.toFixed(4)}</p>
-                        {analysis.positionSizing && (
-                          <p className="text-danger font-bold text-2xl">
-                            -${analysis.positionSizing.riskAmount.toFixed(2)}
-                          </p>
-                        )}
                       </div>
                     </div>
 
